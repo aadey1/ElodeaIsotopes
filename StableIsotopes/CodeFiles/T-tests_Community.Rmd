@@ -1,0 +1,369 @@
+---
+title: "T-tests Macrophytes Invertebrates"
+author: "Amaryllis Adey"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Setting up the workspace
+
+```{r}
+library(SIBER, quietly = TRUE,
+        verbose = FALSE,
+        logical.return = FALSE)
+library(viridis)
+library(tibble)
+library(dplyr)
+```
+
+# Comparisons of C and N signatures Based on Elodea Presence/Absence
+
+Starting with Macrophytes
+
+Read in the data
+```{r}
+mydata <- read.csv("~/Dropbox/SWEL/CopperRiverDelta/Elodea/SI_Ponds/DataAnalysis/ElodeaStableIsotopes/Analysis_Fall2024/DataFiles/CRD_MacrophyteData_SIBER.csv")
+CRD_data <- mydata
+```
+
+Add a status column here
+```{r}
+CRD_data
+
+CRD_data <- CRD_data %>%
+  mutate(status = case_when(
+    community %in% c("EYS", "PCH", "STB") ~ "Native",
+    community %in% c("SWN", "WCW", "WGN") ~ "Elodea",
+    TRUE ~ NA_character_  # Handle any other cases
+  ))
+CRD_data
+```
+
+Comparing the isotopic signatures of macrophytes based on Elodea Presence/Absence
+
+## Bogbean
+
+```{r}
+Bogbean <- CRD_data %>%
+  filter(group == "Bogbean")
+
+ttest_carbon <- t.test(iso1 ~ status, data = Bogbean, na.action = na.omit)
+print(ttest_carbon)
+
+ttest_nitrogen <- t.test(iso2 ~ status, data = Bogbean, na.action = na.omit)
+print(ttest_nitrogen)
+```
+## Horsetail
+```{r}
+Horsetail <- CRD_data %>%
+  filter(group == "Horsetail")
+
+ttest_carbon <- t.test(iso1 ~ status, data = Horsetail, na.action = na.omit)
+print(ttest_carbon)
+
+ttest_nitrogen <- t.test(iso2 ~ status, data = Horsetail, na.action = na.omit)
+print(ttest_nitrogen)
+```
+
+## Millfoil
+```{r}
+Millfoil <- CRD_data %>%
+  filter(group == "Millfoil")
+
+ttest_carbon <- t.test(iso1 ~ status, data = Millfoil, na.action = na.omit)
+print(ttest_carbon)
+
+ttest_nitrogen <- t.test(iso2 ~ status, data = Millfoil, na.action = na.omit)
+print(ttest_nitrogen)
+```
+
+## Peat Moss
+```{r}
+PeatMoss <- CRD_data %>%
+  filter(group == "Peat Moss")
+
+ttest_carbon <- t.test(iso1 ~ status, data = PeatMoss, na.action = na.omit)
+print(ttest_carbon)
+
+ttest_nitrogen <- t.test(iso2 ~ status, data = PeatMoss, na.action = na.omit)
+print(ttest_nitrogen)
+```
+
+## Sedge
+```{r}
+Sedge <- CRD_data %>%
+  filter(group == "Sedge")
+
+ttest_carbon <- t.test(iso1 ~ status, data = Sedge, na.action = na.omit)
+print(ttest_carbon)
+
+ttest_nitrogen <- t.test(iso2 ~ status, data = Sedge, na.action = na.omit)
+print(ttest_nitrogen)
+```
+
+## Yellow Pondlily
+```{r}
+YellowPondlily <- CRD_data %>%
+  filter(group == "Yellow Pondlily")
+
+ttest_carbon <- t.test(iso1 ~ status, data = YellowPondlily, na.action = na.omit)
+print(ttest_carbon)
+
+ttest_nitrogen <- t.test(iso2 ~ status, data = YellowPondlily, na.action = na.omit)
+print(ttest_nitrogen)
+```
+
+## Bladderwort
+```{r}
+#Bladderwort <- CRD_data %>%
+ # filter(group == "Bladderwort")
+
+#ttest_carbon <- t.test(iso1 ~ status, data = Bladderwort, na.action = na.omit)
+#print(ttest_carbon)
+
+#ttest_nitrogen <- t.test(iso2 ~ status, data = Bladderwort, na.action = na.omit)
+#print(ttest_nitrogen)
+```
+
+## Cotton Grass
+```{r}
+CottonGrass <- CRD_data %>%
+  filter(group == "Cotton Grass")
+
+ttest_carbon <- t.test(iso1 ~ status, data = CottonGrass, na.action = na.omit)
+print(ttest_carbon)
+
+ttest_nitrogen <- t.test(iso2 ~ status, data = CottonGrass, na.action = na.omit)
+print(ttest_nitrogen)
+```
+
+## Purple Marshlocks
+```{r}
+PurpleMarshlocks <- CRD_data %>%
+  filter(group == "Purple Marshlocks")
+
+ttest_carbon <- t.test(iso1 ~ status, data = PurpleMarshlocks, na.action = na.omit)
+print(ttest_carbon)
+
+ttest_nitrogen <- t.test(iso2 ~ status, data = PurpleMarshlocks, na.action = na.omit)
+print(ttest_nitrogen)
+```
+
+## Mare's Tail
+```{r}
+MaresTail <- CRD_data %>%
+  filter(group == "Mare's Tail")
+
+ttest_carbon <- t.test(iso1 ~ status, data = MaresTail, na.action = na.omit)
+print(ttest_carbon)
+
+ttest_nitrogen <- t.test(iso2 ~ status, data = MaresTail, na.action = na.omit)
+print(ttest_nitrogen)
+```
+
+## Pondweed
+```{r}
+Pondweed <- CRD_data %>%
+  filter(group == "Pondweed")
+
+ttest_carbon <- t.test(iso1 ~ status, data = Pondweed, na.action = na.omit)
+print(ttest_carbon)
+
+ttest_nitrogen <- t.test(iso2 ~ status, data = Pondweed, na.action = na.omit)
+print(ttest_nitrogen)
+```
+
+## Algae
+```{r}
+#Algae <- CRD_data %>%
+ # filter(group == "Algae")
+
+#ttest_carbon <- t.test(iso1 ~ status, data = Algae, na.action = na.omit)
+#print(ttest_carbon)
+
+#ttest_nitrogen <- t.test(iso2 ~ status, data = Algae, na.action = na.omit)
+#print(ttest_nitrogen)
+```
+
+## Burreed
+```{r}
+#Burreed <- CRD_data %>%
+ # filter(group == "Burreed")
+
+#ttest_carbon <- t.test(iso1 ~ status, data = Burreed, na.action = na.omit)
+#print(ttest_carbon)
+
+#ttest_nitrogen <- t.test(iso2 ~ status, data = Burreed, na.action = na.omit)
+#print(ttest_nitrogen)
+```
+
+## Reed Grass
+```{r}
+#ReedGrass <- CRD_data %>%
+ # filter(group == "Reed Grass")
+
+#ttest_carbon <- t.test(iso1 ~ status, data = ReedGrass, na.action = na.omit)
+#print(ttest_carbon)
+
+#ttest_nitrogen <- t.test(iso2 ~ status, data = ReedGrass, na.action = na.omit)
+#print(ttest_nitrogen)
+```
+
+# Continuing with the Invertebrates
+
+Read in the data
+```{r}
+mydata <- read.csv("~/Dropbox/SWEL/CopperRiverDelta/Elodea/SI_Ponds/DataAnalysis/ElodeaStableIsotopes/Analysis_Fall2024/DataFiles/CRD_SIData.csv",
+                   header=TRUE)
+```
+
+Add a status column here
+```{r}
+mydata
+
+mydata <- mydata %>%
+  mutate(status = case_when(
+    group %in% c("EyakSouth", "ThePinch", "Strawberry") ~ "Native",
+    group %in% c("Swanny", "WestCanneryWest", "Wigeon") ~ "Elodea",
+    TRUE ~ NA_character_  # Handle any other cases
+  ))
+mydata
+```
+
+## Amphipod
+```{r}
+Amphipod <- mydata %>%
+  filter(community == "Amphipod")
+
+ttest_carbon <- t.test(iso1 ~ status, data = Amphipod, na.action = na.omit)
+print(ttest_carbon)
+
+ttest_nitrogen <- t.test(iso2 ~ status, data = Amphipod, na.action = na.omit)
+print(ttest_nitrogen)
+```
+
+## Beetle
+```{r}
+Beetle <- mydata %>%
+  filter(community == "Beetle")
+
+ttest_carbon <- t.test(iso1 ~ status, data = Beetle, na.action = na.omit)
+print(ttest_carbon)
+
+ttest_nitrogen <- t.test(iso2 ~ status, data = Beetle, na.action = na.omit)
+print(ttest_nitrogen)
+```
+
+## Caddisfly
+```{r}
+Caddisfly <- mydata %>%
+  filter(community == "Caddisfly")
+
+ttest_carbon <- t.test(iso1 ~ status, data = Caddisfly, na.action = na.omit)
+print(ttest_carbon)
+
+ttest_nitrogen <- t.test(iso2 ~ status, data = Caddisfly, na.action = na.omit)
+print(ttest_nitrogen)
+```
+
+## Clams
+```{r}
+Clams <- mydata %>%
+  filter(community == "Clams")
+
+ttest_carbon <- t.test(iso1 ~ status, data = Clams, na.action = na.omit)
+print(ttest_carbon)
+
+ttest_nitrogen <- t.test(iso2 ~ status, data = Clams, na.action = na.omit)
+print(ttest_nitrogen)
+```
+
+## Damselfly
+```{r}
+Damselfly <- mydata %>%
+  filter(community == "Damselfly")
+
+ttest_carbon <- t.test(iso1 ~ status, data = Damselfly, na.action = na.omit)
+print(ttest_carbon)
+
+ttest_nitrogen <- t.test(iso2 ~ status, data = Damselfly, na.action = na.omit)
+print(ttest_nitrogen)
+```
+
+
+## Dragonfly
+```{r}
+Dragonfly <- mydata %>%
+  filter(community == "Dragonfly")
+
+ttest_carbon <- t.test(iso1 ~ status, data = Dragonfly, na.action = na.omit)
+print(ttest_carbon)
+
+ttest_nitrogen <- t.test(iso2 ~ status, data = Dragonfly, na.action = na.omit)
+print(ttest_nitrogen)
+```
+
+## Fly
+```{r}
+Fly <- mydata %>%
+  filter(community == "Fly")
+
+ttest_carbon <- t.test(iso1 ~ status, data = Fly, na.action = na.omit)
+print(ttest_carbon)
+
+ttest_nitrogen <- t.test(iso2 ~ status, data = Fly, na.action = na.omit)
+print(ttest_nitrogen)
+```
+
+## Leech
+```{r}
+#Leech <- mydata %>%
+ # filter(community == "Leech")
+
+#ttest_carbon <- t.test(iso1 ~ status, data = Leech, na.action = na.omit)
+#print(ttest_carbon)
+
+#ttest_nitrogen <- t.test(iso2 ~ status, data = Leech, na.action = na.omit)
+#print(ttest_nitrogen)
+```
+
+## Mite
+```{r}
+Mite <- mydata %>%
+  filter(community == "Mite")
+
+ttest_carbon <- t.test(iso1 ~ status, data = Mite, na.action = na.omit)
+print(ttest_carbon)
+
+ttest_nitrogen <- t.test(iso2 ~ status, data = Mite, na.action = na.omit)
+print(ttest_nitrogen)
+```
+
+## Snail
+```{r}
+#Snail <- mydata %>%
+ # filter(community == "Snail")
+
+#ttest_carbon <- t.test(iso1 ~ status, data = Snail, na.action = na.omit)
+#print(ttest_carbon)
+
+#ttest_nitrogen <- t.test(iso2 ~ status, data = Snail, na.action = na.omit)
+#print(ttest_nitrogen)
+```
+
+## Water Boatman
+```{r}
+WaterBoatman <- mydata %>%
+  filter(community == "Water Boatman")
+
+ttest_carbon <- t.test(iso1 ~ status, data = WaterBoatman, na.action = na.omit)
+print(ttest_carbon)
+
+ttest_nitrogen <- t.test(iso2 ~ status, data = WaterBoatman, na.action = na.omit)
+print(ttest_nitrogen)
+```
+

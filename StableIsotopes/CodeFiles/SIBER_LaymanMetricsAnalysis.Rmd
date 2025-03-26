@@ -1,0 +1,528 @@
+---
+title: "SIBER_Analysis"
+author: "Amaryllis Adey"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Setting up the workspace
+
+```{r}
+library(SIBER, quietly = TRUE,
+        verbose = FALSE,
+        logical.return = FALSE)
+library(viridis)
+library(tibble)
+```
+
+Choose 4 colours from the viridis color palette because
+We have 4 groups in each community and we want to plot them in different colours.
+```{r}
+palette(viridis(4))
+```
+
+Read in the data
+```{r}
+mydata <- read.csv("Analysis_Fall2024/DataFiles/CRD_MacrophyteData_SIBER.csv", header=TRUE)
+```
+
+Create the siber object
+
+```{r}
+siber.example <- createSiberObject(mydata)
+```
+
+Create lists of plotting arguments to be passed onwards to each of the three plotting functions.
+
+```{r}
+community.hulls.args <- list(col = "black", lty = 1, lwd = 1)
+group.ellipses.args  <- list(n = 100, p.interval = 0.95, lty = 1, lwd = 2)
+group.hull.args      <- list(lty = 2, col = "grey20")
+
+# plot the raw data
+par(mfrow=c(1,1))
+plotSiberObject(siber.example,
+                ax.pad = 2, 
+                hulls = TRUE, community.hulls.args, 
+                ellipses = FALSE, group.ellipses.args,
+                group.hulls = FALSE, group.hull.args,
+                bty = "L",
+                iso.order = c(1,2),
+                xlab = expression({delta}^13*C~'\u2030'),
+                ylab = expression({delta}^15*N~'\u2030')
+)
+
+# add the confidence interval of the means to help locate
+# the centre of each data cluster
+
+## This section below does not work because different communities within each group
+#plotGroupEllipses(siber.example, n = 100, p.interval = 0.95,
+ #                 ci.mean = TRUE, lty = 1, lwd = 2)
+```
+
+# Fit the Bayesian models
+
+Options for running jags
+
+```{r}
+parms <- list()
+parms$n.iter <- 2 * 10^4   # number of iterations to run the model for
+parms$n.burnin <- 1 * 10^3 # discard the first set of values
+parms$n.thin <- 10     # thin the posterior by this many
+parms$n.chains <- 2        # run this many chains
+```
+
+Define the priors
+
+```{r}
+priors <- list()
+priors$R <- 1 * diag(2)
+priors$k <- 2
+priors$tau.mu <- 1.0E-3
+```
+
+Fit the ellipses which uses an Inverse Wishart prior on the covariance matrix Sigma, and a vague normal prior on the means. Fitting is via the JAGS method.
+
+```{r}
+ellipses.posterior <- siberMVN(siber.example, parms, priors)
+```
+
+Extract the posterior means
+
+```{r}
+#This section also does not work with different communities per group
+ mu.post <- extractPosteriorMeans(siber.example, ellipses.posterior)
+```
+
+Calculate the corresponding distribution of layman metrics
+
+```{r}
+layman.B <- bayesianLayman(mu.post)
+```
+
+# Visualise the first community
+
+Drop the 3rd column of the posterior which is TA using -3. 
+Makes this hard to view
+
+```{r}
+siberDensityPlot(layman.B[[1]][ , -3], 
+               xticklabels = colnames(layman.B[[1]][ , -3]), 
+               bty="L", ylim = c(0,20))
+```
+
+Add the ML estimates (if you want). Extract the correct means from the appropriate array held within the overall array of means.
+
+```{r}
+#comm1.layman.ml <- laymanMetrics(siber.example$ML.mu[[1]][1,1,],
+ #                               siber.example$ML.mu[[1]][1,2,]
+#)
+
+#again drop the 3rd entry which relates to TA
+#points(1:5, comm1.layman.ml$metrics[-3], col = "red", pch = "x", lwd = 2)
+```
+
+# Visualise the second community
+
+```{r}
+#This section also does not work with different communities per group
+#siberDensityPlot(layman.B[[2]][ , -3], 
+ #                xticklabels = colnames(layman.B[[2]][ , -3]), 
+  #               bty="L", ylim = c(0,20))
+```
+
+Add the ML estimates. (if you want) Extract the correct means from the appropriate array held within the overall array of means.
+
+```{r}
+#This section also does not work with different communities per group
+#comm2.layman.ml <- laymanMetrics(siber.example$ML.mu[[2]][1,1,],
+ #                                siber.example$ML.mu[[2]][1,2,]
+#)
+#points(1:5, comm2.layman.ml$metrics[-3], 
+ #      col = "red", pch = "x", lwd = 2)
+```
+
+Alternatively, pull out TA from both and aggregate them into a single matrix using cbind() and plot them together on one graph.
+
+Go back to a 1x1 panel plot
+
+```{r}
+par(mfrow=c(1,1))
+```
+
+Now we only plot the TA data. We could address this as either
+  layman.B[[1]][, "TA"]
+        or 
+  layman.B[[1]][, 3]
+  
+```{r}
+siberDensityPlot(cbind(layman.B[[1]][ , "TA"], 
+                       layman.B[[2]][ , "TA"],
+                       layman.B[[3]][ , "TA"], 
+                       layman.B[[4]][ , "TA"],
+                       layman.B[[5]][ , "TA"], 
+                       layman.B[[6]][ , "TA"]),
+                 xticklabels = c("EYS", "PCH","STB", "SWN","WCW", "WGN"), 
+                 bty="L", ylim = c(0,60),
+                 las = 1,
+                 ylab = "TA - Convex Hull Area",
+                 xlab = "")
+
+TA_means <- c(mean(layman.B[[1]][ , "TA"]), mean(layman.B[[2]][ , "TA"]), mean(layman.B[[3]][ , "TA"]), 
+               mean(layman.B[[4]][ , "TA"]), mean(layman.B[[5]][ , "TA"]), mean(layman.B[[6]][ , "TA"]))
+TA_sds <- c(sd(layman.B[[1]][ , "TA"]), sd(layman.B[[2]][ , "TA"]), sd(layman.B[[3]][ , "TA"]), 
+                sd(layman.B[[4]][ , "TA"]), sd(layman.B[[5]][ , "TA"]), sd(layman.B[[6]][ , "TA"]))
+names <- c("EYS", "PCH","STB", "SWN","WCW", "WGN")
+Status <- c("Native", "Native", "Native", "Elodea", "Elodea", "Elodea")
+
+TotalArea <- tibble(names, Status, TA_means, TA_sds)
+
+#Trying to make these plots in ggplot instead as violin plots
+
+# Load required package
+library(ggplot2)
+library(dplyr)
+
+# Combine the data into a single data frame
+layman_data <- do.call(rbind, lapply(seq_along(layman.B), function(i) {
+  data.frame(Group = paste0("Group_", i), TA = layman.B[[i]][, "TA"])
+}))
+
+# Define the group names for labeling
+group_labels <- c("EYS", "PCH", "STB", "SWN", "WCW", "WGN")
+
+# Calculate the 2.5th and 97.5th percentiles for each group
+layman_data_filtered <- layman_data %>%
+  group_by(Group) %>%
+  mutate(
+    lower_cutoff = quantile(TA, 0.025),
+    upper_cutoff = quantile(TA, 0.975)
+  ) %>%
+  filter(TA >= lower_cutoff & TA <= upper_cutoff) %>%
+  ungroup()
+
+# Calculate medians for each group
+median_values <- layman_data_filtered %>%
+  group_by(Group) %>%
+  summarize(median_TA = median(TA), .groups = "drop")
+
+# Create the violin plot
+TotalArea_plot <- ggplot(layman_data_filtered, aes(x = factor(Group, labels = group_labels), y = TA, fill = Group)) +
+  geom_violin(trim = TRUE) +
+  geom_point(data = median_values, aes(x = factor(Group, labels = group_labels), y = median_TA), 
+             shape = 4, size = 3, color = "black", stroke = 1.2) + # Add X for median
+  ylab("Total Area") +
+  xlab("") +
+  theme_classic() +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 14),     # Increase size of axis tick labels
+    axis.title = element_text(size = 20),   # Increase size of axis titles
+    axis.text.x = element_text(size = 16),  # Increase size of x-axis text (specific)
+    axis.text.y = element_text(size = 16)   # Increase size of y-axis text (specific)
+  )
+TotalArea_plot
+
+ggsave("Analysis_Fall2024/Plots/TotalArea_plot.png", plot = TotalArea_plot, height = 6, width = 12, dpi = 300)
+
+```
+
+We can take the code from just above for TA and simply swap out the metric of choice for whatever we want. 
+
+Here I do this for NND and take care to change the y axis labels too.
+
+```{r}
+siberDensityPlot(cbind(layman.B[[1]][ , "NND"], 
+                       layman.B[[2]][ , "NND"],
+                       layman.B[[3]][ , "NND"], 
+                       layman.B[[4]][ , "NND"],
+                       layman.B[[5]][ , "NND"], 
+                       layman.B[[6]][ , "NND"]),
+                 xticklabels = c("EYS", "PCH","STB", "SWN","WCW", "WGN"), 
+                 bty="L", ylim = c(0, 4),
+                 las = 1,
+                 ylab = "NND (nearest neighbour distance",
+                 xlab = "")
+
+NND_means <- c(mean(layman.B[[1]][ , "NND"]), mean(layman.B[[2]][ , "NND"]), mean(layman.B[[3]][ , "NND"]), 
+                  mean(layman.B[[4]][ , "NND"]), mean(layman.B[[5]][ , "NND"]), mean(layman.B[[6]][ , "NND"]))
+NND_sds <- c(sd(layman.B[[1]][ , "NND"]), sd(layman.B[[2]][ , "NND"]), sd(layman.B[[3]][ , "NND"]), 
+                sd(layman.B[[4]][ , "NND"]), sd(layman.B[[5]][ , "NND"]), sd(layman.B[[6]][ , "NND"]))
+
+NearestNeighbor <- data_frame(names, Status, NND_means, NND_sds)
+
+#Trying to make these plots in ggplot instead as violin plots
+
+# Load required package
+library(ggplot2)
+library(dplyr)
+
+# Combine the data into a single data frame
+layman_data <- do.call(rbind, lapply(seq_along(layman.B), function(i) {
+  data.frame(Group = paste0("Group_", i), NND = layman.B[[i]][, "NND"])
+}))
+
+# Define the group names for labeling
+group_labels <- c("EYS", "PCH", "STB", "SWN", "WCW", "WGN")
+
+# Calculate the 2.5th and 97.5th percentiles for each group
+layman_data_filtered <- layman_data %>%
+  group_by(Group) %>%
+  mutate(
+    lower_cutoff = quantile(NND, 0.025),
+    upper_cutoff = quantile(NND, 0.975)
+  ) %>%
+  filter(NND >= lower_cutoff & NND <= upper_cutoff) %>%
+  ungroup()
+
+# Calculate medians for each group
+median_values <- layman_data_filtered %>%
+  group_by(Group) %>%
+  summarize(median_NND = median(NND), .groups = "drop")
+
+# Create the violin plot
+NND_plot <- ggplot(layman_data_filtered, aes(x = factor(Group, labels = group_labels), y = NND, fill = Group)) +
+  geom_violin(trim = TRUE) +
+  geom_point(data = median_values, aes(x = factor(Group, labels = group_labels), y = median_NND), 
+             shape = 4, size = 3, color = "black", stroke = 1.2) + # Add X for median
+  ylab("Nearest Neighbor Distance") +
+  xlab("") +
+  theme_classic() +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 14),     # Increase size of axis tick labels
+    axis.title = element_text(size = 20),   # Increase size of axis titles
+    axis.text.x = element_text(size = 16),  # Increase size of x-axis text (specific)
+    axis.text.y = element_text(size = 16)   # Increase size of y-axis text (specific)
+  )
+NND_plot
+
+ggsave("Analysis_Fall2024/Plots/NearestNeighbor_plot.png", plot = NND_plot, height = 6, width = 12, dpi = 300)
+```
+
+Here I do this for CD and take care to change the y axis labels too.
+
+```{r}
+siberDensityPlot(cbind(layman.B[[1]][ , "CD"], 
+                       layman.B[[2]][ , "CD"],
+                       layman.B[[3]][ , "CD"], 
+                       layman.B[[4]][ , "CD"],
+                       layman.B[[5]][ , "CD"], 
+                       layman.B[[6]][ , "CD"]),
+                 xticklabels = c("EYS", "PCH","STB", "SWN","WCW", "WGN"), 
+                 bty="L", ylim = c(0, 5),
+                 las = 1,
+                 ylab = "CD (centroid distance)",
+                 xlab = "")
+
+CD_means <- c(mean(layman.B[[1]][ , "CD"]), mean(layman.B[[2]][ , "CD"]), mean(layman.B[[3]][ , "CD"]), 
+                   mean(layman.B[[4]][ , "CD"]), mean(layman.B[[5]][ , "CD"]), mean(layman.B[[6]][ , "CD"]))
+CD_sds <- c(sd(layman.B[[1]][ , "CD"]), sd(layman.B[[2]][ , "CD"]), sd(layman.B[[3]][ , "CD"]), 
+                 sd(layman.B[[4]][ , "CD"]), sd(layman.B[[5]][ , "CD"]), sd(layman.B[[6]][ , "CD"]))
+
+CentroidDistance <- data_frame(names, Status, CD_means, CD_sds)
+
+# Load required package
+library(ggplot2)
+library(dplyr)
+
+# Combine the data into a single data frame
+layman_data <- do.call(rbind, lapply(seq_along(layman.B), function(i) {
+  data.frame(Group = paste0("Group_", i), CD = layman.B[[i]][, "CD"])
+}))
+
+# Define the group names for labeling
+group_labels <- c("EYS", "PCH", "STB", "SWN", "WCW", "WGN")
+
+# Calculate the 2.5th and 97.5th percentiles for each group
+layman_data_filtered <- layman_data %>%
+  group_by(Group) %>%
+  mutate(
+    lower_cutoff = quantile(CD, 0.025),
+    upper_cutoff = quantile(CD, 0.975)
+  ) %>%
+  filter(CD >= lower_cutoff & CD <= upper_cutoff) %>%
+  ungroup()
+
+# Calculate medians for each group
+median_values <- layman_data_filtered %>%
+  group_by(Group) %>%
+  summarize(median_CD = median(CD), .groups = "drop")
+
+# Create the violin plot
+CD_plot <- ggplot(layman_data_filtered, aes(x = factor(Group, labels = group_labels), y = CD, fill = Group)) +
+  geom_violin(trim = TRUE) +
+  geom_point(data = median_values, aes(x = factor(Group, labels = group_labels), y = median_CD), 
+             shape = 4, size = 3, color = "black", stroke = 1.2) + # Add X for median
+  ylab("Centroid Distance") +
+  xlab("") +
+  theme_classic() +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 14),     # Increase size of axis tick labels
+    axis.title = element_text(size = 20),   # Increase size of axis titles
+    axis.text.x = element_text(size = 16),  # Increase size of x-axis text (specific)
+    axis.text.y = element_text(size = 16)   # Increase size of y-axis text (specific)
+  )
+CD_plot
+
+ggsave("Analysis_Fall2024/Plots/Centroid_plot.png", plot = CD_plot, height = 6, width = 12, dpi = 300)
+```
+
+Here I do this for carbon_range and take care to change the y axis labels too.
+
+```{r}
+siberDensityPlot(cbind(layman.B[[1]][ , "dX_range"], 
+                       layman.B[[2]][ , "dX_range"],
+                       layman.B[[3]][ , "dX_range"], 
+                       layman.B[[4]][ , "dX_range"],
+                       layman.B[[5]][ , "dX_range"], 
+                       layman.B[[6]][ , "dX_range"]),
+                 xticklabels = c("EYS", "PCH","STB", "SWN","WCW", "WGN"), 
+                 bty="L", ylim = c(0, 20),
+                 las = 1,
+                 ylab = "Carbon Range",
+                 xlab = "")
+
+dCrange_means <- c(mean(layman.B[[1]][ , "dX_range"]), mean(layman.B[[2]][ , "dX_range"]), mean(layman.B[[3]][ , "dX_range"]), 
+                  mean(layman.B[[4]][ , "dX_range"]), mean(layman.B[[5]][ , "dX_range"]), mean(layman.B[[6]][ , "dX_range"]))
+dCrange_sds <- c(sd(layman.B[[1]][ , "dX_range"]), sd(layman.B[[2]][ , "dX_range"]), sd(layman.B[[3]][ , "dX_range"]), 
+                sd(layman.B[[4]][ , "dX_range"]), sd(layman.B[[5]][ , "dX_range"]), sd(layman.B[[6]][ , "dX_range"]))
+
+CarbonRange <- data_frame(names, Status, dCrange_means, dCrange_sds)
+
+# Load required package
+library(ggplot2)
+library(dplyr)
+
+# Combine the data into a single data frame
+layman_data <- do.call(rbind, lapply(seq_along(layman.B), function(i) {
+  data.frame(Group = paste0("Group_", i), dX_range = layman.B[[i]][, "dX_range"])
+}))
+
+# Define the group names for labeling
+group_labels <- c("EYS", "PCH", "STB", "SWN", "WCW", "WGN")
+
+# Calculate the 2.5th and 97.5th percentiles for each group
+layman_data_filtered <- layman_data %>%
+  group_by(Group) %>%
+  mutate(
+    lower_cutoff = quantile(dX_range, 0.025),
+    upper_cutoff = quantile(dX_range, 0.975)
+  ) %>%
+  filter(dX_range >= lower_cutoff & dX_range <= upper_cutoff) %>%
+  ungroup()
+
+# Calculate medians for each group
+median_values <- layman_data_filtered %>%
+  group_by(Group) %>%
+  summarize(median_dX_range = median(dX_range), .groups = "drop")
+
+# Create the violin plot
+dX_range_plot <- ggplot(layman_data_filtered, aes(x = factor(Group, labels = group_labels), y = dX_range, fill = Group)) +
+  geom_violin(trim = TRUE) +
+  geom_point(data = median_values, aes(x = factor(Group, labels = group_labels), y = median_dX_range), 
+             shape = 4, size = 3, color = "black", stroke = 1.2) + # Add X for median
+  ylab("Carbon Range") +
+  xlab("") +
+  theme_classic() +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 14),     # Increase size of axis tick labels
+    axis.title = element_text(size = 20),   # Increase size of axis titles
+    axis.text.x = element_text(size = 16),  # Increase size of x-axis text (specific)
+    axis.text.y = element_text(size = 16)   # Increase size of y-axis text (specific)
+  )
+dX_range_plot
+
+ggsave("Analysis_Fall2024/Plots/CarbonRange_plot.png", plot = dX_range_plot, height = 6, width = 12, dpi = 300)
+```
+
+Here I do this for nitrogen_range and take care to change the y axis labels too.
+
+```{r}
+siberDensityPlot(cbind(layman.B[[1]][ , "dY_range"], 
+                       layman.B[[2]][ , "dY_range"],
+                       layman.B[[3]][ , "dY_range"], 
+                       layman.B[[4]][ , "dY_range"],
+                       layman.B[[5]][ , "dY_range"], 
+                       layman.B[[6]][ , "dY_range"]),
+                 xticklabels = c("EYS", "PCH","STB", "SWN","WCW", "WGN"), 
+                 bty="L", ylim = c(0, 10),
+                 las = 1,
+                 ylab = "Nitrogen Range",
+                 xlab = "")
+
+dNrange_means <- c(mean(layman.B[[1]][ , "dY_range"]), mean(layman.B[[2]][ , "dY_range"]), mean(layman.B[[3]][ , "dY_range"]), 
+                       mean(layman.B[[4]][ , "dY_range"]), mean(layman.B[[5]][ , "dY_range"]), mean(layman.B[[6]][ , "dY_range"]))
+dNrange_sds <- c(sd(layman.B[[1]][ , "dY_range"]), sd(layman.B[[2]][ , "dY_range"]), sd(layman.B[[3]][ , "dY_range"]), 
+                     sd(layman.B[[4]][ , "dY_range"]), sd(layman.B[[5]][ , "dY_range"]), sd(layman.B[[6]][ , "dY_range"]))
+
+NitrogenRange <- data_frame(names, Status, dNrange_means, dNrange_sds)
+
+#Trying to make these plots in ggplot instead as violin plots
+
+# Load required package
+library(ggplot2)
+library(dplyr)
+
+# Combine the data into a single data frame
+layman_data <- do.call(rbind, lapply(seq_along(layman.B), function(i) {
+  data.frame(Group = paste0("Group_", i), dY_range = layman.B[[i]][, "dY_range"])
+}))
+
+# Define the group names for labeling
+group_labels <- c("EYS", "PCH", "STB", "SWN", "WCW", "WGN")
+
+# Calculate the 2.5th and 97.5th percentiles for each group
+layman_data_filtered <- layman_data %>%
+  group_by(Group) %>%
+  mutate(
+    lower_cutoff = quantile(dY_range, 0.025),
+    upper_cutoff = quantile(dY_range, 0.975)
+  ) %>%
+  filter(dY_range >= lower_cutoff & dY_range <= upper_cutoff) %>%
+  ungroup()
+
+# Calculate medians for each group
+median_values <- layman_data_filtered %>%
+  group_by(Group) %>%
+  summarize(median_dY_range = median(dY_range), .groups = "drop")
+
+# Create the violin plot
+dY_range_plot <- ggplot(layman_data_filtered, aes(x = factor(Group, labels = group_labels), y = dY_range, fill = Group)) +
+  geom_violin(trim = TRUE) +
+  geom_point(data = median_values, aes(x = factor(Group, labels = group_labels), y = median_dY_range), 
+             shape = 4, size = 3, color = "black", stroke = 1.2) + # Add X for median
+  ylab("Nitrogen Range") +
+  xlab("") +
+  theme_classic() +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 14),     # Increase size of axis tick labels
+    axis.title = element_text(size = 20),   # Increase size of axis titles
+    axis.text.x = element_text(size = 16),  # Increase size of x-axis text (specific)
+    axis.text.y = element_text(size = 16)   # Increase size of y-axis text (specific)
+  )
+dY_range_plot
+
+ggsave("Analysis_Fall2024/Plots/NitrogenRange_plot.png", plot = dY_range_plot, height = 6, width = 12, dpi = 300)
+```
+
+Running t-tests to compare the total isotopic area etc. between elodea and no elodea lakes
+
+```{r}
+t.test(TA_means ~ Status, data = TotalArea)
+
+t.test(NND_means ~ Status, data = NearestNeighbor)
+
+t.test(CD_means ~ Status, data = CentroidDistance)
+
+t.test(dCrange_means ~ Status, data = CarbonRange)
+
+t.test(dNrange_means ~ Status, data = NitrogenRange)
+```

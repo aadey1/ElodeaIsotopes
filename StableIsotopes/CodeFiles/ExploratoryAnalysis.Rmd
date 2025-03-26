@@ -1,0 +1,931 @@
+---
+title: "ExploratoryAnalysis"
+author: "Amaryllis Adey"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Set up the packages that are needed here
+
+```{r}
+library(SIBER)
+library(dplyr)
+library(ggplot2)
+library(ggpubr)
+library(grid)
+```
+
+Set up the asthetics
+
+```{r}
+# Define a unified palette for communities and groups
+# Define updated colors with a more visible option for Yellow Pond Lily
+unified_colors <- c(
+  "Algae" = "red", 
+  "Amphipod" = "blue", 
+  "Beetle" = "green", 
+  "Bladderwort" = "purple", 
+  "Bogbean" = "orange", 
+  "Burreed" = "pink", 
+  "Caddisfly" = "cyan", 
+  "Clams" = "brown", 
+  "Cotton Grass" = "darkgreen",
+  "Damselfly" = "gold", 
+  "Dragonfly" = "black", 
+  "Elodea" = "grey", 
+  "Fly" = "navy", 
+  "Horsetail" = "lightblue", 
+  "Leech" = "magenta",
+  "Mare's Tail" = "darkred", 
+  "Milfoil" = "yellowgreen", 
+  "Mite" = "lightpink", 
+  "Peat Moss" = "turquoise", 
+  "Pondweed" = "violet", 
+  "Purple Marshlocks" = "darkblue", 
+  "Reed Grass" = "darkorange", 
+  "Snail" = "khaki", 
+  "Water Boatman" = "plum", 
+  "Willow" = "coral", 
+  "Yellow Pond Lily" = "#1F77B4"  # Bright gold for better visibility
+)
+
+
+# Define 27 shapes for community and 17 for macrophytes
+unified_shapes <- c(
+  "Algae" = 0, "Amphipod" = 1, "Beetle" = 2, "Bladderwort" = 3, 
+  "Bogbean" = 4, "Burreed" = 5, "Caddisfly" = 6, "Clams" = 7, 
+  "Cotton Grass" = 8, "Damselfly" = 9, "Dragonfly" = 10, "Elodea" = 11, 
+  "Fly" = 12, "Horsetail" = 13, "Leech" = 14, "Mare's Tail" = 15, 
+  "Milfoil" = 16, "Mite" = 17, "Peat Moss" = 18, "Pondweed" = 19, 
+  "Purple Marshlocks" = 20, "Reed Grass" = 21, "Snail" = 22, 
+  "Water Boatman" = 23, "Willow" = 24, "Yellow Pond Lily" = 25
+)
+
+```
+
+# Read in the data file -- for the total SI data (inverts plus macrophytes)
+
+```{r}
+# import the data. Replace this line with a read.csv() or similar call
+mydata <- read.csv("Analysis_Fall2024/DataFiles/CRD_SIData.csv",
+                   header=TRUE)
+demo_data <- mydata %>% mutate(group = factor(group), 
+                               community = factor(community),
+                               d13C = iso1, 
+                               d15N = iso2,
+                               .keep = "unused") 
+TestData <- demo_data %>%
+  mutate(status = ifelse(group == "Swanny", "Elodea",
+                         ifelse(group == "WestCanneryWest", "Elodea",
+                                ifelse(group == "Wigeon", "Elodea",
+                                       ifelse(group == "ThePinch", "Native",
+                                              ifelse(group == "EyakSouth", "Native",
+                                                     ifelse(group == "Strawberry", "Native", "blank")))))))
+TestData2 <- TestData %>%
+  mutate(pair = ifelse(group == "Swanny", "Alaganik",
+                         ifelse(group == "WestCanneryWest", "Eyak",
+                                ifelse(group == "Wigeon", "Road",
+                                       ifelse(group == "ThePinch", "Alaganik",
+                                              ifelse(group == "EyakSouth", "Eyak",
+                                                     ifelse(group == "Strawberry", "Road", "blank")))))))
+
+# appears this worked to add the status column
+demo_data <- TestData2
+```
+
+# Setting up the biplot here
+
+```{r}
+# when plotting colors and shapes, we need to tell ggplot that these are to 
+# be treated as categorical factor type data, and not numeric.
+
+#first I need to set up the shapes since ggplot will not make a figure for it
+# if it has more than 6 community members
+colors <- c("blue", "red")
+
+
+first.plot <- ggplot(data = demo_data, 
+                     aes(x = d13C, 
+                         y = d15N)) + 
+  geom_point(aes(shape = community, color = community), size = 2) +
+  guides(shape = guide_legend(title = "Taxa"), color = guide_legend(title = "Taxa")) +
+  scale_color_manual(values = unified_colors) +
+  scale_shape_manual(values = unified_shapes) +
+  facet_grid(rows = vars(status), cols = vars(pair)) +
+  ylab(expression(paste(delta^{15}, "N (\u2030)"))) +
+  xlab(expression(paste(delta^{13}, "C (\u2030)"))) + 
+  theme(#plot.title = element_text(hjust = 0.5), 
+    axis.title = element_text(size = 18),
+    axis.text = element_text(size = 13),
+    strip.text.x = element_text(size = 20),
+    strip.text.y = element_text(size = 20))
+
+# And print our plot to screen
+print(first.plot)
+
+bw.first.plot <- first.plot + theme_bw() + 
+  theme(text = element_text(size=18))
+
+# and print to screen
+print(bw.first.plot)
+
+# Try to add lake labels to this
+dat_text <- data.frame(
+  label = c("SWN", "PCH", "WCW", "EYS", "WGN", "STB"),
+  pair = c("Alaganik", "Alaganik", "Eyak", "Eyak", "Road", "Road"),
+  status = c("Elodea", "Native", "Elodea", "Native", "Elodea", "Native")
+)
+
+plot <- bw.first.plot + geom_text(
+  data    = dat_text,
+  mapping = aes(x = -Inf, y = -Inf, label = label),
+  hjust   = -0.1,
+  vjust   = -1
+)
+
+print(plot)
+```
+
+Making this have red and blue lables for Status (elodea and native)
+
+```{r}
+g <- ggplot_gtable(ggplot_build(plot))
+strip_right <- which(grepl('strip-r', g$layout$name))
+fills <- c("#F8766D","#619CFF")
+k <- 1
+for (i in strip_right) {
+  j <- which(grepl('rect', g$grobs[[i]]$grobs[[1]]$childrenOrder))
+  g$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- fills[k]
+  k <- k+1
+}
+grid.draw(g)
+
+ggsave("Analysis_Fall2024/Plots/new/CRD_Biplot_all.png", plot = g, height = 6, width = 12, dpi = 300)
+```
+
+# Plot to put into inkscape
+
+```{r}
+library(ggplot2)
+library(gridExtra)  # For combining the legend and the plot
+
+# First, create the plot with the legend
+first.plot <- ggplot(data = demo_data, 
+                     aes(x = d13C, 
+                         y = d15N)) + 
+  geom_point(aes(shape = community, color = community), size = 2) +
+  guides(shape = guide_legend(title = "Taxa"), color = guide_legend(title = "Taxa")) +
+  scale_color_manual(values = unified_colors) +
+  scale_shape_manual(values = unified_shapes) +
+  facet_grid(rows = vars(status), cols = vars(pair)) +
+  ylab(expression(paste(delta^{15}, "N (\u2030)"))) +
+  xlab(expression(paste(delta^{13}, "C (\u2030)"))) + 
+  theme_classic()+
+  theme(axis.title = element_text(size = 18),
+        axis.text = element_text(size = 13),
+        strip.text.x = element_text(size = 20),
+        strip.text.y = element_text(size = 20))
+
+# Remove the legend from the main plot
+first.plot_no_legend <- first.plot + theme(legend.position = "none")
+
+# Print the main plot (without the legend)
+print(first.plot_no_legend)
+
+
+bw.first.plot <- first.plot + theme_bw() + 
+  theme(text = element_text(size=18),
+        legend.position = "none")
+
+# and print to screen
+print(bw.first.plot)
+
+# Try to add lake labels to this
+dat_text <- data.frame(
+  label = c("SWN", "PCH", "WCW", "EYS", "WGN", "STB"),
+  pair = c("Alaganik", "Alaganik", "Eyak", "Eyak", "Road", "Road"),
+  status = c("Elodea", "Native", "Elodea", "Native", "Elodea", "Native")
+)
+
+plot <- bw.first.plot + geom_text(
+  data    = dat_text,
+  mapping = aes(x = -Inf, y = -Inf, label = label),
+  hjust   = -0.1,
+  vjust   = -1
+)
+
+print(plot)
+
+g <- ggplot_gtable(ggplot_build(plot))
+strip_right <- which(grepl('strip-r', g$layout$name))
+fills <- c("#F8766D","#619CFF")
+k <- 1
+for (i in strip_right) {
+  j <- which(grepl('rect', g$grobs[[i]]$grobs[[1]]$childrenOrder))
+  g$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- fills[k]
+  k <- k+1
+}
+grid.draw(g)
+
+ggsave("Analysis_Fall2024/Plots/new/CRD_Biplot_all_PUB.png", plot = g, height = 6, width = 12, dpi = 300)
+
+# Extract the legend from the plot
+get_legend <- function(plot) {
+  tmp <- ggplot_gtable(ggplot_build(plot))
+  leg <- tmp$grobs[[which(sapply(tmp$grobs, function(x) x$name) == "guide-box")]]
+  return(leg)
+}
+
+legend_plot <- get_legend(first.plot)
+
+# Now create a plot with just the legend
+legend_only_plot <- grid.arrange(legend_plot, ncol = 1)
+
+# Save the legend plot separately
+ggsave("Analysis_Fall2024/Plots/new/CRD_Legend_only.png", plot = legend_only_plot, height = 3, width = 6, dpi = 300)
+
+
+```
+
+
+Make the same plot of only the macrophytes
+
+# Read in the data file -- for the total SI data (macrophytes)
+
+```{r}
+# import the data. Replace this line with a read.csv() or similar call
+mydata <- read.csv("Analysis_Fall2024/DataFiles/CRD_SI_Macrophyte.csv",
+                   header=TRUE)
+demo_data <- mydata %>% mutate(group = factor(group), 
+                               community = factor(community),
+                               d13C = iso1, 
+                               d15N = iso2,
+                               .keep = "unused") 
+TestData <- demo_data %>%
+  mutate(status = ifelse(community == "SWN", "Elodea",
+                         ifelse(community == "WCW", "Elodea",
+                                ifelse(community == "WGN", "Elodea",
+                                       ifelse(community == "PCH", "Native",
+                                              ifelse(community == "EYS", "Native",
+                                                     ifelse(community == "STB", "Native", "blank")))))))
+TestData2 <- TestData %>%
+  mutate(pair = ifelse(community == "SWN", "Alaganik",
+                         ifelse(community == "WCW", "Eyak",
+                                ifelse(community == "WGN", "Road",
+                                       ifelse(community == "PCH", "Alaganik",
+                                              ifelse(community == "EYS", "Eyak",
+                                                     ifelse(community == "STB", "Road", "blank")))))))
+
+# appears this worked to add the status column
+demo_data <- TestData2
+```
+
+# Setting up the biplot here
+
+```{r}
+# when plotting colors and shapes, we need to tell ggplot that these are to 
+# be treated as categorical factor type data, and not numeric.
+
+#first I need to set up the shapes since ggplot will not make a figure for it
+# if it has more than 6 community members
+colors <- c("blue", "red")
+
+
+first.plot <- ggplot(data = demo_data, 
+                     aes(x = d13C, 
+                         y = d15N)) + 
+  geom_point(aes(shape = group, color = group), size = 2) +
+  guides(shape = guide_legend(title = "Taxa"), color = guide_legend(title = "Taxa")) +
+  scale_color_manual(values = unified_colors) +
+  scale_shape_manual(values = unified_shapes) +
+  facet_grid(rows = vars(status), cols = vars(pair)) +
+  ylab(expression(paste(delta^{15}, "N (\u2030)"))) +
+  xlab(expression(paste(delta^{13}, "C (\u2030)"))) + 
+  theme(#plot.title = element_text(hjust = 0.5), 
+    axis.title = element_text(size = 18),
+    axis.text = element_text(size = 13),
+    strip.text.x = element_text(size = 20),
+    strip.text.y = element_text(size = 20))
+
+# And print our plot to screen
+print(first.plot)
+
+bw.first.plot <- first.plot + theme_bw() + 
+  theme(text = element_text(size=18))
+
+# and print to screen
+print(bw.first.plot)
+
+# Try to add lake labels to this
+dat_text <- data.frame(
+  label = c("SWN", "PCH", "WCW", "EYS", "WGN", "STB"),
+  pair = c("Alaganik", "Alaganik", "Eyak", "Eyak", "Road", "Road"),
+  status = c("Elodea", "Native", "Elodea", "Native", "Elodea", "Native")
+)
+
+plot <- bw.first.plot + geom_text(
+  data    = dat_text,
+  mapping = aes(x = -Inf, y = -Inf, label = label),
+  hjust   = -0.1,
+  vjust   = -1
+)
+
+print(plot)
+```
+
+Making this have red and blue lables for Status (elodea and native)
+
+```{r}
+library(grid)
+g <- ggplot_gtable(ggplot_build(plot))
+strip_right <- which(grepl('strip-r', g$layout$name))
+fills <- c("#F8766D","#619CFF")
+k <- 1
+for (i in strip_right) {
+  j <- which(grepl('rect', g$grobs[[i]]$grobs[[1]]$childrenOrder))
+  g$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- fills[k]
+  k <- k+1
+}
+grid.draw(g)
+
+ggsave("Analysis_Fall2024/Plots/new/CRD_Macrophyte_Biplot_all.png", plot = g, height = 6, width = 12, dpi = 300)
+```
+
+# Plot to put into inkscape
+
+```{r}
+library(ggplot2)
+library(gridExtra)  # For combining the legend and the plot
+
+# First, create the plot with the legend
+first.plot <- ggplot(data = demo_data, 
+                     aes(x = d13C, 
+                         y = d15N)) + 
+  geom_point(aes(shape = group, color = group), size = 2) +
+  guides(shape = guide_legend(title = "Taxa"), color = guide_legend(title = "Taxa")) +
+  scale_color_manual(values = unified_colors) +
+  scale_shape_manual(values = unified_shapes) +
+  facet_grid(rows = vars(status), cols = vars(pair)) +
+  ylab(expression(paste(delta^{15}, "N (\u2030)"))) +
+  xlab(expression(paste(delta^{13}, "C (\u2030)"))) + 
+  theme(axis.title = element_text(size = 18),
+        axis.text = element_text(size = 13),
+        strip.text.x = element_text(size = 20),
+        strip.text.y = element_text(size = 20))
+
+# Remove the legend from the main plot
+first.plot_no_legend <- first.plot + theme(legend.position = "none")
+
+# Print the main plot (without the legend)
+print(first.plot_no_legend)
+
+
+bw.first.plot <- first.plot + theme_bw() + 
+  theme(text = element_text(size=18),
+        legend.position = "none")
+
+# and print to screen
+print(bw.first.plot)
+
+# Try to add lake labels to this
+dat_text <- data.frame(
+  label = c("SWN", "PCH", "WCW", "EYS", "WGN", "STB"),
+  pair = c("Alaganik", "Alaganik", "Eyak", "Eyak", "Road", "Road"),
+  status = c("Elodea", "Native", "Elodea", "Native", "Elodea", "Native")
+)
+
+plot <- bw.first.plot + geom_text(
+  data    = dat_text,
+  mapping = aes(x = -Inf, y = -Inf, label = label),
+  hjust   = -0.1,
+  vjust   = -1
+)
+
+print(plot)
+
+g <- ggplot_gtable(ggplot_build(plot))
+strip_right <- which(grepl('strip-r', g$layout$name))
+fills <- c("#F8766D","#619CFF")
+k <- 1
+for (i in strip_right) {
+  j <- which(grepl('rect', g$grobs[[i]]$grobs[[1]]$childrenOrder))
+  g$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- fills[k]
+  k <- k+1
+}
+grid.draw(g)
+
+ggsave("Analysis_Fall2024/Plots/new/CRD_Macrophyte_Biplot_all_PUB.png", plot = g, height = 6, width = 12, dpi = 300)
+```
+
+
+Making a plot with the Elodea samples for WCW compared to the Elodea samples from SWN and WGN
+
+```{r}
+mydata <- read.csv("Analysis_Fall2024/DataFiles/CRD_MacrophyteData_SIBER.csv", header=TRUE)
+
+elodea <- mydata %>%
+  filter (group == "Elodea")
+
+# Define shapes and colors for each community
+shapes <- c(16, 17, 18)  # Circle, Triangle, Square (for 3 communities)
+colors <- c("blue", "red", "green")  # Assign colors for each community
+
+# Create the plot
+plot <- ggplot(data = elodea, 
+               aes(x = iso1, y = iso2)) + 
+  geom_point(aes(shape = community, color = community), size = 3) +
+  scale_shape_manual(values = shapes) +  # Map community to shape
+  scale_color_manual(values = colors) +  # Map community to color
+  ylab(expression(paste(delta^{15}, "N (\u2030)"))) +
+  xlab(expression(paste(delta^{13}, "C (\u2030)"))) + 
+  theme(
+    axis.title = element_text(size = 18),
+    axis.text = element_text(size = 13)
+  ) +
+  guides(shape = guide_legend(title = "Community"), 
+         color = guide_legend(title = "Community"))
+
+# Show the plot
+plot
+
+```
+
+Creating the graph of the Elodea imputed values
+
+```{r}
+mydata <- read.csv("Analysis_Fall2024/DataFiles/CRD_MacrophyteData_SIBER.csv", header=TRUE)
+```
+
+Plotting these
+
+```{r}
+#first select only Elodea data
+elodea <- mydata %>%
+  filter(group == "Elodea")
+
+Elodea_plot <- ggplot(data = elodea, aes(x = iso1, y = iso2)) + 
+  geom_point(aes(color = community, shape = community), size = 3) + # Map both color and shape to 'community'
+  ylab(expression(paste(delta^{15}, "N (\u2030)"))) +
+  xlab(expression(paste(delta^{13}, "C (\u2030)"))) + 
+  theme_classic() +
+  theme(
+    axis.title = element_text(size = 20),
+    axis.text = element_text(size = 15)
+  ) +
+  guides(
+    shape = guide_legend(title = "Community"),  # Single legend for 'Community'
+    color = "none"  # Remove the color legend
+  )
+Elodea_plot
+
+ggsave("Analysis_Fall2024/Plots/new/Elodea_Biplot.png", plot = Elodea_plot, height = 6, width = 12, dpi = 300)
+
+```
+
+
+
+# Making a plot of the isotope data with it as a mean +/- standard deviation
+
+Start by defining the aethetics
+
+```{r}
+# Define a unified palette for communities and groups
+# Define updated colors with a more visible option for Yellow Pond Lily
+unified_colors <- c(
+  "Algae" = "red", 
+  "Amphipod" = "blue", 
+  "Beetle" = "green", 
+  "Bladderwort" = "purple", 
+  "Bogbean" = "orange", 
+  "Burreed" = "pink", 
+  "Caddisfly" = "cyan", 
+  "Clams" = "brown", 
+  "Cotton Grass" = "darkgreen",
+  "Damselfly" = "gold", 
+  "Dragonfly" = "black", 
+  "Elodea" = "grey", 
+  "Fly" = "navy", 
+  "Horsetail" = "lightblue", 
+  "Leech" = "magenta",
+  "Mare's Tail" = "darkred", 
+  "Milfoil" = "yellowgreen", 
+  "Mite" = "lightpink", 
+  "Peat Moss" = "turquoise", 
+  "Pondweed" = "violet", 
+  "Purple Marshlocks" = "darkblue", 
+  "Reed Grass" = "darkorange", 
+  "Snail" = "khaki", 
+  "Water Boatman" = "plum", 
+  "Willow" = "coral", 
+  "Yellow Pond Lily" = "#1F77B4"  # Bright gold for better visibility
+)
+
+
+# Define 27 shapes for community and 17 for macrophytes
+unified_shapes <- c(
+  "Algae" = 0, "Amphipod" = 1, "Beetle" = 2, "Bladderwort" = 3, 
+  "Bogbean" = 4, "Burreed" = 5, "Caddisfly" = 6, "Clams" = 7, 
+  "Cotton Grass" = 8, "Damselfly" = 9, "Dragonfly" = 10, "Elodea" = 11, 
+  "Fly" = 12, "Horsetail" = 13, "Leech" = 14, "Mare's Tail" = 15, 
+  "Milfoil" = 16, "Mite" = 17, "Peat Moss" = 18, "Pondweed" = 19, 
+  "Purple Marshlocks" = 20, "Reed Grass" = 21, "Snail" = 22, 
+  "Water Boatman" = 23, "Willow" = 24, "Yellow Pond Lily" = 25
+)
+
+```
+
+# Read in the data file -- for the total SI data (inverts plus macrophytes)
+
+```{r}
+# import the data. Replace this line with a read.csv() or similar call
+mydata <- read.csv("Analysis_Fall2024/DataFiles/CRD_SIData.csv",
+                   header=TRUE)
+demo_data <- mydata %>% mutate(group = factor(group), 
+                               community = factor(community),
+                               d13C = iso1, 
+                               d15N = iso2,
+                               .keep = "unused") 
+TestData <- demo_data %>%
+  mutate(status = ifelse(group == "Swanny", "Elodea",
+                         ifelse(group == "WestCanneryWest", "Elodea",
+                                ifelse(group == "Wigeon", "Elodea",
+                                       ifelse(group == "ThePinch", "Native",
+                                              ifelse(group == "EyakSouth", "Native",
+                                                     ifelse(group == "Strawberry", "Native", "blank")))))))
+TestData2 <- TestData %>%
+  mutate(pair = ifelse(group == "Swanny", "Alaganik",
+                         ifelse(group == "WestCanneryWest", "Eyak",
+                                ifelse(group == "Wigeon", "Road",
+                                       ifelse(group == "ThePinch", "Alaganik",
+                                              ifelse(group == "EyakSouth", "Eyak",
+                                                     ifelse(group == "Strawberry", "Road", "blank")))))))
+
+# appears this worked to add the status column
+demo_data <- TestData2
+```
+
+## Starting with the whole community
+
+Calculate the mean +/- sd for each taxa for each pond
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# Calculate mean and SD for each community/group combination
+summary_data <- demo_data %>%
+  group_by(community, group, status, pair) %>%
+  summarise(
+    mean_d13C = mean(d13C),
+    sd_d13C = sd(d13C),
+    mean_d15N = mean(d15N),
+    sd_d15N = sd(d15N),
+    .groups = "drop"
+  )
+summary_data
+```
+
+Create the panel plot
+
+```{r}
+panel_plot <- ggplot(data = summary_data, 
+                     aes(x = mean_d13C, 
+                         y = mean_d15N)) +
+  # Error bars first (behind points)
+  geom_errorbar(aes(ymin = mean_d15N - sd_d15N, ymax = mean_d15N + sd_d15N, color = community), 
+                width = 0.2, size = 0.8) +
+  geom_errorbarh(aes(xmin = mean_d13C - sd_d13C, xmax = mean_d13C + sd_d13C, color = community), 
+                 height = 0.2, size = 0.8) +
+  # Points second (on top of error bars)
+  geom_point(aes(shape = community, color = community), size = 4) +  # Increase size of points
+  guides(shape = guide_legend(title = "Community"), color = guide_legend(title = "Community")) +
+  scale_color_manual(values = unified_colors) +
+  scale_shape_manual(values = unified_shapes) +
+  facet_grid(rows = vars(status), cols = vars(pair)) +
+  ylab(expression(paste(delta^{15}, "N (\u2030)"))) +
+  xlab(expression(paste(delta^{13}, "C (\u2030)"))) +
+  theme(
+    axis.title = element_text(size = 18),
+    axis.text = element_text(size = 13),
+    strip.text.x = element_text(size = 20),
+    strip.text.y = element_text(size = 20)
+  )
+print(panel_plot)
+
+```
+
+Update to B&W theme
+
+```{r}
+# Add black-and-white theme
+bw_panel_plot <- panel_plot + 
+  theme_bw() +
+  theme(text = element_text(size = 18))
+
+# Define lake labels
+dat_text <- data.frame(
+  label = c("SWN", "PCH", "WCW", "EYS", "WGN", "STB"),
+  pair = c("Alaganik", "Alaganik", "Eyak", "Eyak", "Road", "Road"),
+  status = c("Elodea", "Native", "Elodea", "Native", "Elodea", "Native")
+)
+
+# Add labels
+final_plot <- bw_panel_plot + 
+  geom_text(
+    data = dat_text,
+    mapping = aes(x = -Inf, y = -Inf, label = label),
+    hjust = -0.1,
+    vjust = -1
+  )
+print(final_plot)
+
+```
+
+Update to have the red and blue lables
+
+```{r}
+library(grid)
+g <- ggplot_gtable(ggplot_build(final_plot))
+strip_right <- which(grepl('strip-r', g$layout$name))
+fills <- c("#F8766D", "#619CFF")  # Define red and blue fills
+k <- 1
+for (i in strip_right) {
+  j <- which(grepl('rect', g$grobs[[i]]$grobs[[1]]$childrenOrder))
+  g$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- fills[k]
+  k <- k+1
+}
+grid.draw(g)
+
+ggsave("Analysis_Fall2024/Plots/new/CRD_Biplot.png", plot = g, height = 6, width = 12, dpi = 300)
+```
+
+# Plot for inkscape figure
+
+```{r}
+library(ggplot2)
+library(gridExtra)  # For combining the legend and the plot
+
+# First, create the plot with the legend
+first.plot <- ggplot(data = summary_data, 
+                     aes(x = mean_d13C, 
+                         y = mean_d15N)) +
+  # Error bars first (behind points)
+  geom_errorbar(aes(ymin = mean_d15N - sd_d15N, ymax = mean_d15N + sd_d15N, color = community), 
+                width = 0.2, size = 0.8) +
+  geom_errorbarh(aes(xmin = mean_d13C - sd_d13C, xmax = mean_d13C + sd_d13C, color = community), 
+                 height = 0.2, size = 0.8) +
+  # Points second (on top of error bars)
+  geom_point(aes(shape = community, color = community), size = 4) +  # Increase size of points
+  guides(shape = guide_legend(title = "Taxa"), color = guide_legend(title = "Taxa")) +
+  scale_color_manual(values = unified_colors) +
+  scale_shape_manual(values = unified_shapes) +
+  facet_grid(rows = vars(status), cols = vars(pair)) +
+  ylab(expression(paste(delta^{15}, "N (\u2030)"))) +
+  xlab(expression(paste(delta^{13}, "C (\u2030)"))) + 
+  theme(axis.title = element_text(size = 18),
+        axis.text = element_text(size = 13),
+        strip.text.x = element_text(size = 20),
+        strip.text.y = element_text(size = 20))
+
+# Remove the legend from the main plot
+first.plot_no_legend <- first.plot + theme(legend.position = "none")
+
+# Print the main plot (without the legend)
+print(first.plot_no_legend)
+
+
+bw.first.plot <- first.plot + theme_bw() + 
+  theme(text = element_text(size=18),
+        legend.position = "none")
+
+# and print to screen
+print(bw.first.plot)
+
+# Try to add lake labels to this
+dat_text <- data.frame(
+  label = c("SWN", "PCH", "WCW", "EYS", "WGN", "STB"),
+  pair = c("Alaganik", "Alaganik", "Eyak", "Eyak", "Road", "Road"),
+  status = c("Elodea", "Native", "Elodea", "Native", "Elodea", "Native")
+)
+
+plot <- bw.first.plot + geom_text(
+  data    = dat_text,
+  mapping = aes(x = -Inf, y = -Inf, label = label),
+  hjust   = -0.1,
+  vjust   = -1
+)
+
+print(plot)
+
+g <- ggplot_gtable(ggplot_build(plot))
+strip_right <- which(grepl('strip-r', g$layout$name))
+fills <- c("#F8766D","#619CFF")
+k <- 1
+for (i in strip_right) {
+  j <- which(grepl('rect', g$grobs[[i]]$grobs[[1]]$childrenOrder))
+  g$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- fills[k]
+  k <- k+1
+}
+grid.draw(g)
+
+ggsave("Analysis_Fall2024/Plots/new/CRD_Biplot_Sum_PUB.png", plot = g, height = 6, width = 12, dpi = 300)
+```
+
+## Repeat for the Macrophyte communities
+
+```{r}
+# import the data. Replace this line with a read.csv() or similar call
+mydata <- read.csv("Analysis_Fall2024/DataFiles/CRD_SI_Macrophyte.csv",
+                   header=TRUE)
+demo_data <- mydata %>% mutate(group = factor(group), 
+                               community = factor(community),
+                               d13C = iso1, 
+                               d15N = iso2,
+                               .keep = "unused") 
+TestData <- demo_data %>%
+  mutate(status = ifelse(community == "SWN", "Elodea",
+                         ifelse(community == "WCW", "Elodea",
+                                ifelse(community == "WGN", "Elodea",
+                                       ifelse(community == "PCH", "Native",
+                                              ifelse(community == "EYS", "Native",
+                                                     ifelse(community == "STB", "Native", "blank")))))))
+TestData2 <- TestData %>%
+  mutate(pair = ifelse(community == "SWN", "Alaganik",
+                         ifelse(community == "WCW", "Eyak",
+                                ifelse(community == "WGN", "Road",
+                                       ifelse(community == "PCH", "Alaganik",
+                                              ifelse(community == "EYS", "Eyak",
+                                                     ifelse(community == "STB", "Road", "blank")))))))
+
+# appears this worked to add the status column
+demo_data2 <- TestData2
+```
+
+Calculating the mean +/- sd for each of the taxa in each pond
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+summary_data2 <- demo_data2 %>%
+  group_by(group, community, status, pair) %>%  # Include status and pair in the grouping
+  summarise(
+    mean_d13C = mean(d13C),
+    sd_d13C = sd(d13C),
+    mean_d15N = mean(d15N),
+    sd_d15N = sd(d15N),
+    .groups = "drop"
+  )
+summary_data2
+
+```
+
+Creating the panel plot
+
+```{r}
+panel_plot2 <- ggplot(data = summary_data2, 
+                     aes(x = mean_d13C, 
+                         y = mean_d15N)) +
+  # Error bars first (appear behind points)
+  geom_errorbar(aes(ymin = mean_d15N - sd_d15N, ymax = mean_d15N + sd_d15N, color = group), 
+                width = 0.2, size = 0.8) +
+  geom_errorbarh(aes(xmin = mean_d13C - sd_d13C, xmax = mean_d13C + sd_d13C, color = group), 
+                 height = 0.2, size = 0.8) +
+  # Points second (appear on top of error bars)
+  geom_point(aes(shape = group, color = group), size = 4) +  # Increase size of points
+  guides(shape = guide_legend(title = "Taxa"), color = guide_legend(title = "Taxa")) +
+  scale_color_manual(values = unified_colors) +
+  scale_shape_manual(values = unified_shapes) +
+  facet_grid(rows = vars(status), cols = vars(pair)) +
+  ylab(expression(paste(delta^{15}, "N (\u2030)"))) +
+  xlab(expression(paste(delta^{13}, "C (\u2030)"))) +
+  theme(
+    axis.title = element_text(size = 18),
+    axis.text = element_text(size = 13),
+    strip.text.x = element_text(size = 20),
+    strip.text.y = element_text(size = 20)
+  )
+print(panel_plot2)
+
+
+```
+
+```{r}
+# Add black-and-white theme
+bw_panel_plot2 <- panel_plot2 + 
+  theme_bw() +
+  theme(text = element_text(size = 18))
+
+# Try to add lake labels to this
+dat_text <- data.frame(
+  label = c("SWN", "PCH", "WCW", "EYS", "WGN", "STB"),
+  pair = c("Alaganik", "Alaganik", "Eyak", "Eyak", "Road", "Road"),
+  status = c("Elodea", "Native", "Elodea", "Native", "Elodea", "Native")
+)
+
+# Add labels
+final_plot2 <- bw_panel_plot2 + 
+  geom_text(
+    data = dat_text,
+    mapping = aes(x = -Inf, y = -Inf, label = label),
+    hjust = -0.1,
+    vjust = -1
+  )
+print(final_plot2)
+```
+
+Addin the red and blue labels here 
+
+```{r}
+library(grid)
+g <- ggplot_gtable(ggplot_build(final_plot2))
+strip_right <- which(grepl('strip-r', g$layout$name))
+fills <- c("#F8766D","#619CFF")
+k <- 1
+for (i in strip_right) {
+  j <- which(grepl('rect', g$grobs[[i]]$grobs[[1]]$childrenOrder))
+  g$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- fills[k]
+  k <- k+1
+}
+grid.draw(g)
+
+ggsave("Analysis_Fall2024/Plots/new/CRD_Macrophyte_Biplot.png", plot = g, height = 6, width = 10, dpi = 300)
+```
+
+# Plot for inkscape
+
+# Plot for inkscape figure
+
+```{r}
+library(ggplot2)
+library(gridExtra)  # For combining the legend and the plot
+
+# First, create the plot with the legend
+first.plot <- ggplot(data = summary_data2, 
+                     aes(x = mean_d13C, 
+                         y = mean_d15N)) +
+  # Error bars first (behind points)
+  geom_errorbar(aes(ymin = mean_d15N - sd_d15N, ymax = mean_d15N + sd_d15N, color = group), 
+                width = 0.2, size = 0.8) +
+  geom_errorbarh(aes(xmin = mean_d13C - sd_d13C, xmax = mean_d13C + sd_d13C, color = group), 
+                 height = 0.2, size = 0.8) +
+  # Points second (on top of error bars)
+  geom_point(aes(shape = group, color = group), size = 4) +  # Increase size of points
+  guides(shape = guide_legend(title = "Taxa"), color = guide_legend(title = "Taxa")) +
+  scale_color_manual(values = unified_colors) +
+  scale_shape_manual(values = unified_shapes) +
+  facet_grid(rows = vars(status), cols = vars(pair)) +
+  ylab(expression(paste(delta^{15}, "N (\u2030)"))) +
+  xlab(expression(paste(delta^{13}, "C (\u2030)"))) + 
+  theme(axis.title = element_text(size = 18),
+        axis.text = element_text(size = 13),
+        strip.text.x = element_text(size = 20),
+        strip.text.y = element_text(size = 20))
+
+# Remove the legend from the main plot
+first.plot_no_legend <- first.plot + theme(legend.position = "none")
+
+# Print the main plot (without the legend)
+print(first.plot_no_legend)
+
+
+bw.first.plot <- first.plot + theme_bw() + 
+  theme(text = element_text(size=18),
+        legend.position = "none")
+
+# and print to screen
+print(bw.first.plot)
+
+# Try to add lake labels to this
+dat_text <- data.frame(
+  label = c("SWN", "PCH", "WCW", "EYS", "WGN", "STB"),
+  pair = c("Alaganik", "Alaganik", "Eyak", "Eyak", "Road", "Road"),
+  status = c("Elodea", "Native", "Elodea", "Native", "Elodea", "Native")
+)
+
+plot <- bw.first.plot + geom_text(
+  data    = dat_text,
+  mapping = aes(x = -Inf, y = -Inf, label = label),
+  hjust   = -0.1,
+  vjust   = -1
+)
+
+print(plot)
+
+g <- ggplot_gtable(ggplot_build(plot))
+strip_right <- which(grepl('strip-r', g$layout$name))
+fills <- c("#F8766D","#619CFF")
+k <- 1
+for (i in strip_right) {
+  j <- which(grepl('rect', g$grobs[[i]]$grobs[[1]]$childrenOrder))
+  g$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- fills[k]
+  k <- k+1
+}
+grid.draw(g)
+
+ggsave("Analysis_Fall2024/Plots/new/CRD_Macrophyte_Biplot_Sum_PUB.png", plot = g, height = 6, width = 12, dpi = 300)
+```

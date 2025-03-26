@@ -1,0 +1,1861 @@
+---
+title: "SIBER_EllipsesAnalysis"
+author: "Amaryllis Adey"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Trying to make the isotope ellipse plots then going to check for shifts by species within each pond
+
+Using code from: https://cran.r-project.org/web/packages/SIBER/vignettes/Plot-posterior-ellipses.html
+
+```{r}
+library(SIBER)
+library(dplyr)
+library(ggplot2)
+library(ellipse)
+```
+
+Fitting the SIBER model
+
+```{r}
+# load in the included demonstration dataset
+CRD_data <- read.csv("Analysis_Fall2024/DataFiles/CRD_MacrophyteData_SIBER.csv", header=TRUE)
+#
+```
+
+Setting up the color mapping
+
+```{r}
+macrophyte_groups <- unique(CRD_data$group)
+
+# Generate a color palette
+group_colors <- scales::hue_pal()(length(macrophyte_groups))
+
+# Assign colors to each macrophyte group
+names(group_colors) <- macrophyte_groups
+```
+
+#Setting this up to make an individual plot for each pond?
+
+## EYS
+
+```{r}
+EYS <- CRD_data %>%
+  filter(community == "EYS")
+
+mydata <- EYS
+
+```
+
+Checking this.
+```{r}
+# create the siber object
+siber.example <- createSiberObject(mydata)
+
+# Calculate summary statistics for each group: TA, SEA and SEAc
+group.ML <- groupMetricsML(siber.example)
+
+# options for running jags
+parms <- list()
+parms$n.iter <- 2 * 10^4   # number of iterations to run the model for
+parms$n.burnin <- 1 * 10^3 # discard the first set of values
+parms$n.thin <- 10     # thin the posterior by this many
+parms$n.chains <- 2        # run this many chains
+
+# define the priors
+priors <- list()
+priors$R <- 1 * diag(2)
+priors$k <- 2
+priors$tau.mu <- 1.0E-3
+
+# fit the ellipses which uses an Inverse Wishart prior
+# on the covariance matrix Sigma, and a vague normal prior on the 
+# means. Fitting is via the JAGS method.
+ellipses.posterior <- siberMVN(siber.example, parms, priors)
+```
+
+The posterior estimates of the ellipses for each group can be used to calculate the SEA.B for each group.
+
+```{r siber-plots, echo=TRUE, warning=FALSE, message=FALSE}
+
+SEA.B <- siberEllipses(ellipses.posterior)
+
+siberDensityPlot(SEA.B, xticklabels = colnames(group.ML), 
+                xlab = c("Group"),
+                ylab = expression("Standard Ellipse Area " ('permille' ^2) ),
+                bty = "L",
+                las = 1,
+                main = "SIBER ellipses on each group"
+                )
+
+#trying to make this a violin plot
+library(ggplot2)
+library(dplyr)
+library(reshape2)
+
+# Combine the SEA.B data into a single data frame
+SEA.B.long <- as.data.frame(SEA.B)
+SEA.B.long$Iteration <- 1:nrow(SEA.B.long)
+
+# Convert to long format
+SEA.B.melted <- melt(SEA.B.long, id.vars = "Iteration", variable.name = "Group", value.name = "SEA")
+
+# Define custom group labels
+group_labels <- c("Bogbean", "Horsetail", "Milfoil", "Peat Moss", "Sedge", "Yellow Pond Lily")
+
+# Calculate the 2.5th and 97.5th percentiles for each group
+SEA.B.filtered <- SEA.B.melted %>%
+  group_by(Group) %>%
+  mutate(
+    lower_cutoff = quantile(SEA, 0.025, na.rm = TRUE),
+    upper_cutoff = quantile(SEA, 0.975, na.rm = TRUE)
+  ) %>%
+  filter(SEA >= lower_cutoff & SEA <= upper_cutoff) %>%
+  ungroup()
+
+# Calculate medians for each group
+median_values <- SEA.B.filtered %>%
+  group_by(Group) %>%
+  summarize(median_SEA = median(SEA, na.rm = TRUE), .groups = "drop")
+
+# Create the violin plot with custom group labels
+EYS_plot_all <- ggplot(SEA.B.filtered, aes(x = factor(Group, labels = group_labels), y = SEA, fill = Group)) +
+  geom_violin(trim = TRUE, color = "black") + # Add violin plot
+  geom_point(data = median_values, aes(x = factor(Group, labels = group_labels), y = median_SEA), 
+             shape = 4, size = 3, color = "black", stroke = 1.2) + # Add X for median
+  ylab(expression("Standard Ellipse Area " ('\u2030'^2))) + # Custom y-axis label
+  xlab("") +
+  theme_classic() +
+  theme(
+    legend.position = "none",              # Remove legend
+    axis.text = element_text(size = 14),   # Customize axis tick labels
+    axis.title = element_text(size = 20),  # Customize axis title size
+    axis.text.x = element_text(size = 12, angle = 45, hjust = 1), # Customize x-axis text size
+    axis.text.y = element_text(size = 12)  # Customize y-axis text size
+  )
+
+# Create the violin plot with custom group labels
+EYS_plot_zoom <- ggplot(SEA.B.filtered, aes(x = factor(Group, labels = group_labels), y = SEA, fill = Group)) +
+  geom_violin(trim = TRUE, color = "black") + # Add violin plot
+  geom_point(data = median_values, aes(x = factor(Group, labels = group_labels), y = median_SEA), 
+             shape = 4, size = 3, color = "black", stroke = 1.2) + # Add X for median
+  ylab(expression("Standard Ellipse Area " ('\u2030'^2))) + # Custom y-axis label
+  xlab("") +
+  ylim(0,10)+
+  theme_classic() +
+  theme(
+    legend.position = "none",              # Remove legend
+    axis.text = element_text(size = 14),   # Customize axis tick labels
+    axis.title = element_text(size = 20),  # Customize axis title size
+    axis.text.x = element_text(size = 12, angle = 45, hjust = 1), # Customize x-axis text size
+    axis.text.y = element_text(size = 12)  # Customize y-axis text size
+  )
+
+# Print the plot
+EYS_plot_all
+EYS_plot_zoom
+
+
+ggsave("Analysis_Fall2024/Plots/EYS_all_EllipseArea.png", plot = EYS_plot_all, height = 6, width = 12, dpi = 300)
+ggsave("Analysis_Fall2024/Plots/EYS_zoom_EllipseArea.png", plot = EYS_plot_zoom, height = 6, width = 12, dpi = 300)
+
+```
+
+Now we want to create some plots of some sample ellipses from these distributions. We need to create a data.frame object of all the ellipses for each group. In this example we simply take the first 10 posterior draws assuming them to be independent of one another, but you could take a random sample if you prefer.
+
+```{r}
+# how many of the posterior draws do you want?
+n.posts <- 10
+
+# decide how big an ellipse you want to draw
+p.ell <- 0.95
+
+# for a standard ellipse use
+# p.ell <- EYSisq(1,2)
+
+# a list to store the results
+all_ellipses <- list()
+
+# loop over groups
+for (i in 1:length(ellipses.posterior)){
+  
+  # a dummy variable to build in the loop
+  ell <- NULL
+  post.id <- NULL
+  
+  for ( j in 1:n.posts){
+    
+    # covariance matrix
+    Sigma  <- matrix(ellipses.posterior[[i]][j,1:4], 2, 2)
+    
+    # mean
+    mu     <- ellipses.posterior[[i]][j,5:6]
+    
+    # ellipse points
+    
+    out <- ellipse::ellipse(Sigma, centre = mu , level = p.ell)
+    
+    
+    ell <- rbind(ell, out)
+    post.id <- c(post.id, rep(j, nrow(out)))
+    
+  }
+  ell <- as.data.frame(ell)
+  ell$rep <- post.id
+  all_ellipses[[i]] <- ell
+}
+
+ellipse_df <- bind_rows(all_ellipses, .id = "id")
+
+
+# now we need the group and community names
+
+# extract them from the ellipses.posterior list
+group_comm_names <- names(ellipses.posterior)[as.numeric(ellipse_df$id)]
+
+# split them and conver to a matrix, NB byrow = T
+split_group_comm <- matrix(unlist(strsplit(group_comm_names, "[.]")),
+                           nrow(ellipse_df), 2, byrow = TRUE)
+
+ellipse_df$community <- split_group_comm[,1]
+ellipse_df$group     <- split_group_comm[,2]
+
+ellipse_df <- dplyr::rename(ellipse_df, iso1 = x, iso2 = y)
+```
+
+Now to create the plots. First plot all the raw data as we want.
+
+```{r}
+first.plot <- ggplot(data = mydata, aes(iso1, iso2)) +
+  geom_point(aes(color = factor(group)), size = 2) +
+  ylab(expression(paste(delta^{15}, "N (permille)"))) +
+  xlab(expression(paste(delta^{13}, "C (permille)"))) + 
+  theme(text = element_text(size = 15)) +
+  scale_color_manual(name = "Taxa", values = group_colors)  # Apply color mapping to points
+print(first.plot)
+
+```
+
+Trying to add the 95% confidence ellipses
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Calculate the mean of iso1 and iso2 per group (this part is correct)
+ellipse_summary <- ellipse_df %>%
+  group_by(group) %>%
+  summarise(
+    iso1 = mean(iso1),  # Mean of iso1 (x-coordinate)
+    iso2 = mean(iso2),  # Mean of iso2 (y-coordinate)
+    .groups = "drop"
+  )
+
+# Create the plot with points
+EYS_Ellipse <- ggplot(data = mydata, aes(iso1, iso2)) +
+  geom_point(aes(color = factor(group)), size = 2) +
+  ylab(expression(paste(delta^{15}, "N (\u2030)"))) +
+  xlab(expression(paste(delta^{13}, "C (\u2030)"))) + 
+  scale_color_manual(name = "Taxa", values = group_colors) +  # Apply color mapping to points
+  theme_classic() +
+  theme(
+    axis.text = element_text(size = 14),  # Customize axis tick labels
+    axis.title = element_text(size = 20),  # Customize axis title size
+    axis.text.x = element_text(size = 12),  # Customize x-axis text size
+    axis.text.y = element_text(size = 12)  # Customize y-axis text size
+  ) +
+  stat_ellipse(data = ellipse_df, 
+               aes(x = iso1, y = iso2, color = group), 
+               level = 0.95,  # 95% ellipse
+               size = 1.2, 
+               alpha = 0.6) +  # Adjust transparency for the ellipses
+  scale_color_manual(name = "Taxa", values = group_colors)  # Apply color mapping to ellipses
+
+print(EYS_Ellipse)
+
+ggsave("Analysis_Fall2024/Plots/EYS_Ellipse.png", plot = EYS_Ellipse, height = 6, width = 12, dpi = 300)
+
+```
+
+## PCH
+
+```{r}
+PCH <- CRD_data %>%
+  filter(community == "PCH")
+
+mydata <- PCH
+
+```
+
+Checking this.
+```{r}
+# create the siber object
+siber.example <- createSiberObject(mydata)
+
+# Calculate summary statistics for each group: TA, SEA and SEAc
+group.ML <- groupMetricsML(siber.example)
+
+# options for running jags
+parms <- list()
+parms$n.iter <- 2 * 10^4   # number of iterations to run the model for
+parms$n.burnin <- 1 * 10^3 # discard the first set of values
+parms$n.thin <- 10     # thin the posterior by this many
+parms$n.chains <- 2        # run this many chains
+
+# define the priors
+priors <- list()
+priors$R <- 1 * diag(2)
+priors$k <- 2
+priors$tau.mu <- 1.0E-3
+
+# fit the ellipses which uses an Inverse Wishart prior
+# on the covariance matrix Sigma, and a vague normal prior on the 
+# means. Fitting is via the JAGS method.
+ellipses.posterior <- siberMVN(siber.example, parms, priors)
+```
+
+The posterior estimates of the ellipses for each group can be used to calculate the SEA.B for each group.
+
+```{r siber-plots, echo=TRUE, warning=FALSE, message=FALSE}
+
+SEA.B <- siberEllipses(ellipses.posterior)
+
+siberDensityPlot(SEA.B, xticklabels = colnames(group.ML), 
+                xlab = c("Group"),
+                ylab = expression("Standard Ellipse Area " ('permille' ^2) ),
+                bty = "L",
+                las = 1,
+                main = "SIBER ellipses on each group"
+                )
+
+#trying to make this a violin plot
+library(ggplot2)
+library(dplyr)
+library(reshape2)
+
+# Combine the SEA.B data into a single data frame
+SEA.B.long <- as.data.frame(SEA.B)
+SEA.B.long$Iteration <- 1:nrow(SEA.B.long)
+
+# Convert to long format
+SEA.B.melted <- melt(SEA.B.long, id.vars = "Iteration", variable.name = "Group", value.name = "SEA")
+
+# Define custom group labels
+group_labels <- c("Bladderwort", "Bogbean", "Cotton Grass", "Horsetail", "Milfoil", "Peat Moss", "Purple Marshlocks", "Sedge", "Yellow Pond Lily" )
+
+# Calculate the 2.5th and 97.5th percentiles for each group
+SEA.B.filtered <- SEA.B.melted %>%
+  group_by(Group) %>%
+  mutate(
+    lower_cutoff = quantile(SEA, 0.025, na.rm = TRUE),
+    upper_cutoff = quantile(SEA, 0.975, na.rm = TRUE)
+  ) %>%
+  filter(SEA >= lower_cutoff & SEA <= upper_cutoff) %>%
+  ungroup()
+
+# Calculate medians for each group
+median_values <- SEA.B.filtered %>%
+  group_by(Group) %>%
+  summarize(median_SEA = median(SEA, na.rm = TRUE), .groups = "drop")
+
+# Create the violin plot with custom group labels
+PCH_plot_all <- ggplot(SEA.B.filtered, aes(x = factor(Group, labels = group_labels), y = SEA, fill = Group)) +
+  geom_violin(trim = TRUE, color = "black") + # Add violin plot
+  geom_point(data = median_values, aes(x = factor(Group, labels = group_labels), y = median_SEA), 
+             shape = 4, size = 3, color = "black", stroke = 1.2) + # Add X for median
+  ylab(expression("Standard Ellipse Area " ('\u2030'^2))) + # Custom y-axis label
+  xlab("") +
+  theme_classic() +
+  theme(
+    legend.position = "none",              # Remove legend
+    axis.text = element_text(size = 14),   # Customize axis tick labels
+    axis.title = element_text(size = 20),  # Customize axis title size
+    axis.text.x = element_text(size = 12, angle = 45, hjust = 1), # Rotate x-axis labels by 45 degrees
+    axis.text.y = element_text(size = 12)  # Customize y-axis text size
+  )
+
+
+# Create the violin plot with custom group labels
+PCH_plot_zoom <- ggplot(SEA.B.filtered, aes(x = factor(Group, labels = group_labels), y = SEA, fill = Group)) +
+  geom_violin(trim = TRUE, color = "black") + # Add violin plot
+  geom_point(data = median_values, aes(x = factor(Group, labels = group_labels), y = median_SEA), 
+             shape = 4, size = 3, color = "black", stroke = 1.2) + # Add X for median
+  ylab(expression("Standard Ellipse Area " ('\u2030'^2))) + # Custom y-axis label
+  xlab("") +
+  ylim(0,15)+
+  theme_classic() +
+  theme(
+    legend.position = "none",              # Remove legend
+    axis.text = element_text(size = 14),   # Customize axis tick labels
+    axis.title = element_text(size = 20),  # Customize axis title size
+    axis.text.x = element_text(size = 12, angle = 45, hjust = 1), # Customize x-axis text size
+    axis.text.y = element_text(size = 12)  # Customize y-axis text size
+  )
+
+# Print the plot
+PCH_plot_all
+PCH_plot_zoom
+
+
+ggsave("Analysis_Fall2024/Plots/PCH_all_EllipseArea.png", plot = PCH_plot_all, height = 6, width = 12, dpi = 300)
+ggsave("Analysis_Fall2024/Plots/PCH_zoom_EllipseArea.png", plot = PCH_plot_zoom, height = 6, width = 12, dpi = 300)
+
+```
+
+Now we want to create some plots of some sample ellipses from these distributions. We need to create a data.frame object of all the ellipses for each group. In this example we simply take the first 10 posterior draws assuming them to be independent of one another, but you could take a random sample if you prefer.
+
+```{r}
+# how many of the posterior draws do you want?
+n.posts <- 10
+
+# decide how big an ellipse you want to draw
+p.ell <- 0.95
+
+# for a standard ellipse use
+# p.ell <- pchisq(1,2)
+
+# a list to store the results
+all_ellipses <- list()
+
+# loop over groups
+for (i in 1:length(ellipses.posterior)){
+  
+  # a dummy variable to build in the loop
+  ell <- NULL
+  post.id <- NULL
+  
+  for ( j in 1:n.posts){
+    
+    # covariance matrix
+    Sigma  <- matrix(ellipses.posterior[[i]][j,1:4], 2, 2)
+    
+    # mean
+    mu     <- ellipses.posterior[[i]][j,5:6]
+    
+    # ellipse points
+    
+    out <- ellipse::ellipse(Sigma, centre = mu , level = p.ell)
+    
+    
+    ell <- rbind(ell, out)
+    post.id <- c(post.id, rep(j, nrow(out)))
+    
+  }
+  ell <- as.data.frame(ell)
+  ell$rep <- post.id
+  all_ellipses[[i]] <- ell
+}
+
+ellipse_df <- bind_rows(all_ellipses, .id = "id")
+
+
+# now we need the group and community names
+
+# extract them from the ellipses.posterior list
+group_comm_names <- names(ellipses.posterior)[as.numeric(ellipse_df$id)]
+
+# split them and conver to a matrix, NB byrow = T
+split_group_comm <- matrix(unlist(strsplit(group_comm_names, "[.]")),
+                           nrow(ellipse_df), 2, byrow = TRUE)
+
+ellipse_df$community <- split_group_comm[,1]
+ellipse_df$group     <- split_group_comm[,2]
+
+ellipse_df <- dplyr::rename(ellipse_df, iso1 = x, iso2 = y)
+```
+
+Now to create the plots. First plot all the raw data as we want.
+
+```{r}
+first.plot <- ggplot(data = mydata, aes(iso1, iso2)) +
+  geom_point(aes(color = factor(group)), size = 2) +
+  ylab(expression(paste(delta^{15}, "N (permille)"))) +
+  xlab(expression(paste(delta^{13}, "C (permille)"))) + 
+  theme(text = element_text(size = 15)) +
+  scale_color_manual(name = "Taxa", values = group_colors)  # Apply color mapping to points
+print(first.plot)
+```
+
+Trying to add the 95% confidence ellipses
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Calculate the mean of iso1 and iso2 per group (this part is correct)
+ellipse_summary <- ellipse_df %>%
+  group_by(group) %>%
+  summarise(
+    iso1 = mean(iso1),  # Mean of iso1 (x-coordinate)
+    iso2 = mean(iso2),  # Mean of iso2 (y-coordinate)
+    .groups = "drop"
+  )
+
+# Create the plot with points
+PCH_Ellipse<- ggplot(data = mydata, aes(iso1, iso2)) +
+  geom_point(aes(color = factor(group)), size = 2) +
+  ylab(expression(paste(delta^{15}, "N (\u2030)"))) +
+  xlab(expression(paste(delta^{13}, "C (\u2030)"))) + 
+  scale_color_manual(name = "Taxa", values = group_colors) +  # Apply color mapping to points
+  theme_classic() +
+  theme(
+    axis.text = element_text(size = 14),  # Customize axis tick labels
+    axis.title = element_text(size = 20),  # Customize axis title size
+    axis.text.x = element_text(size = 12),  # Customize x-axis text size
+    axis.text.y = element_text(size = 12)  # Customize y-axis text size
+  ) +
+  stat_ellipse(data = ellipse_df, 
+               aes(x = iso1, y = iso2, color = group), 
+               level = 0.95,  # 95% ellipse
+               size = 1.2, 
+               alpha = 0.6) +  # Adjust transparency for the ellipses
+  scale_color_manual(name = "Taxa", values = group_colors)  # Apply color mapping to ellipses
+
+PCH_Ellipse
+  
+
+ggsave("Analysis_Fall2024/Plots/PCH_Ellipse.png", plot = PCH_Ellipse, height = 6, width = 12, dpi = 300)
+
+```
+
+## STB
+
+```{r}
+STB <- CRD_data %>%
+  filter(community == "STB")
+
+mydata <- STB
+
+```
+
+Checking this.
+```{r}
+# create the siber object
+siber.example <- createSiberObject(mydata)
+
+# Calculate summary statistics for each group: TA, SEA and SEAc
+group.ML <- groupMetricsML(siber.example)
+
+# options for running jags
+parms <- list()
+parms$n.iter <- 2 * 10^4   # number of iterations to run the model for
+parms$n.burnin <- 1 * 10^3 # discard the first set of values
+parms$n.thin <- 10     # thin the posterior by this many
+parms$n.chains <- 2        # run this many chains
+
+# define the priors
+priors <- list()
+priors$R <- 1 * diag(2)
+priors$k <- 2
+priors$tau.mu <- 1.0E-3
+
+# fit the ellipses which uses an Inverse Wishart prior
+# on the covariance matrix Sigma, and a vague normal prior on the 
+# means. Fitting is via the JAGS method.
+ellipses.posterior <- siberMVN(siber.example, parms, priors)
+```
+
+The posterior estimates of the ellipses for each group can be used to calculate the SEA.B for each group.
+
+```{r siber-plots, echo=TRUE, warning=FALSE, message=FALSE}
+
+SEA.B <- siberEllipses(ellipses.posterior)
+
+siberDensityPlot(SEA.B, xticklabels = colnames(group.ML), 
+                xlab = c("Group"),
+                ylab = expression("Standard Ellipse Area " ('permille' ^2) ),
+                bty = "L",
+                las = 1,
+                main = "SIBER ellipses on each group"
+                )
+
+#trying to make this a violin plot
+library(ggplot2)
+library(dplyr)
+library(reshape2)
+
+# Combine the SEA.B data into a single data frame
+SEA.B.long <- as.data.frame(SEA.B)
+SEA.B.long$Iteration <- 1:nrow(SEA.B.long)
+
+# Convert to long format
+SEA.B.melted <- melt(SEA.B.long, id.vars = "Iteration", variable.name = "Group", value.name = "SEA")
+
+# Define custom group labels
+group_labels <- c("Bladderwort", "Bogbean", "Horsetail", "Mare's Tail", "Pondweed", "Purple Marshlocks", "Sedge", "Yellow Pond Lily" )
+
+# Calculate the 2.5th and 97.5th percentiles for each group
+SEA.B.filtered <- SEA.B.melted %>%
+  group_by(Group) %>%
+  mutate(
+    lower_cutoff = quantile(SEA, 0.025, na.rm = TRUE),
+    upper_cutoff = quantile(SEA, 0.975, na.rm = TRUE)
+  ) %>%
+  filter(SEA >= lower_cutoff & SEA <= upper_cutoff) %>%
+  ungroup()
+
+# Calculate medians for each group
+median_values <- SEA.B.filtered %>%
+  group_by(Group) %>%
+  summarize(median_SEA = median(SEA, na.rm = TRUE), .groups = "drop")
+
+# Create the violin plot with custom group labels
+STB_plot_all <- ggplot(SEA.B.filtered, aes(x = factor(Group, labels = group_labels), y = SEA, fill = Group)) +
+  geom_violin(trim = TRUE, color = "black") + # Add violin plot
+  geom_point(data = median_values, aes(x = factor(Group, labels = group_labels), y = median_SEA), 
+             shape = 4, size = 3, color = "black", stroke = 1.2) + # Add X for median
+  ylab(expression("Standard Ellipse Area " ('\u2030'^2))) + # Custom y-axis label
+  xlab("") +
+  theme_classic() +
+  theme(
+    legend.position = "none",              # Remove legend
+    axis.text = element_text(size = 14),   # Customize axis tick labels
+    axis.title = element_text(size = 20),  # Customize axis title size
+    axis.text.x = element_text(size = 12, angle = 45, hjust = 1), # Rotate x-axis labels by 45 degrees
+    axis.text.y = element_text(size = 12)  # Customize y-axis text size
+  )
+
+
+# Create the violin plot with custom group labels
+STB_plot_zoom <- ggplot(SEA.B.filtered, aes(x = factor(Group, labels = group_labels), y = SEA, fill = Group)) +
+  geom_violin(trim = TRUE, color = "black") + # Add violin plot
+  geom_point(data = median_values, aes(x = factor(Group, labels = group_labels), y = median_SEA), 
+             shape = 4, size = 3, color = "black", stroke = 1.2) + # Add X for median
+  ylab(expression("Standard Ellipse Area " ('\u2030'^2))) + # Custom y-axis label
+  xlab("") +
+  ylim(0,5)+
+  theme_classic() +
+  theme(
+    legend.position = "none",              # Remove legend
+    axis.text = element_text(size = 14),   # Customize axis tick labels
+    axis.title = element_text(size = 20),  # Customize axis title size
+    axis.text.x = element_text(size = 12, angle = 45, hjust = 1), # Customize x-axis text size
+    axis.text.y = element_text(size = 12)  # Customize y-axis text size
+  )
+
+# Print the plot
+STB_plot_all
+STB_plot_zoom
+
+
+ggsave("Analysis_Fall2024/Plots/STB_all_EllipseArea.png", plot = STB_plot_all, height = 6, width = 12, dpi = 300)
+ggsave("Analysis_Fall2024/Plots/STB_zoom_EllipseArea.png", plot = STB_plot_zoom, height = 6, width = 12, dpi = 300)
+
+```
+
+Now we want to create some plots of some sample ellipses from these distributions. We need to create a data.frame object of all the ellipses for each group. In this example we simply take the first 10 posterior draws assuming them to be independent of one another, but you could take a random sample if you prefer.
+
+```{r}
+# how many of the posterior draws do you want?
+n.posts <- 10
+
+# decide how big an ellipse you want to draw
+p.ell <- 0.95
+
+# for a standard ellipse use
+# p.ell <- STBisq(1,2)
+
+
+
+
+# a list to store the results
+all_ellipses <- list()
+
+# loop over groups
+for (i in 1:length(ellipses.posterior)){
+  
+  # a dummy variable to build in the loop
+  ell <- NULL
+  post.id <- NULL
+  
+  for ( j in 1:n.posts){
+    
+    # covariance matrix
+    Sigma  <- matrix(ellipses.posterior[[i]][j,1:4], 2, 2)
+    
+    # mean
+    mu     <- ellipses.posterior[[i]][j,5:6]
+    
+    # ellipse points
+    
+    out <- ellipse::ellipse(Sigma, centre = mu , level = p.ell)
+    
+    
+    ell <- rbind(ell, out)
+    post.id <- c(post.id, rep(j, nrow(out)))
+    
+  }
+  ell <- as.data.frame(ell)
+  ell$rep <- post.id
+  all_ellipses[[i]] <- ell
+}
+
+ellipse_df <- bind_rows(all_ellipses, .id = "id")
+
+
+# now we need the group and community names
+
+# extract them from the ellipses.posterior list
+group_comm_names <- names(ellipses.posterior)[as.numeric(ellipse_df$id)]
+
+# split them and conver to a matrix, NB byrow = T
+split_group_comm <- matrix(unlist(strsplit(group_comm_names, "[.]")),
+                           nrow(ellipse_df), 2, byrow = TRUE)
+
+ellipse_df$community <- split_group_comm[,1]
+ellipse_df$group     <- split_group_comm[,2]
+
+ellipse_df <- dplyr::rename(ellipse_df, iso1 = x, iso2 = y)
+```
+
+
+
+Now to create the plots. First plot all the raw data as we want.
+
+```{r}
+first.plot <- ggplot(data = mydata, aes(iso1, iso2)) +
+  geom_point(aes(color = factor(group)), size = 2) +
+  ylab(expression(paste(delta^{15}, "N (permille)"))) +
+  xlab(expression(paste(delta^{13}, "C (permille)"))) + 
+  theme(text = element_text(size = 15)) +
+  scale_color_manual(name = "Taxa", values = group_colors)  # Apply color mapping to points
+print(first.plot)
+```
+
+Trying to add the 95% confidence ellipses
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Calculate the mean of iso1 and iso2 per group (this part is correct)
+ellipse_summary <- ellipse_df %>%
+  group_by(group) %>%
+  summarise(
+    iso1 = mean(iso1),  # Mean of iso1 (x-coordinate)
+    iso2 = mean(iso2),  # Mean of iso2 (y-coordinate)
+    .groups = "drop"
+  )
+
+# Create the plot with points
+STB_Ellipse<- ggplot(data = mydata, aes(iso1, iso2)) +
+  geom_point(aes(color = factor(group)), size = 2) +
+  ylab(expression(paste(delta^{15}, "N (\u2030)"))) +
+  xlab(expression(paste(delta^{13}, "C (\u2030)"))) + 
+  scale_color_manual(name = "Taxa", values = group_colors) +  # Apply color mapping to points
+  theme_classic() +
+  theme(
+    axis.text = element_text(size = 14),  # Customize axis tick labels
+    axis.title = element_text(size = 20),  # Customize axis title size
+    axis.text.x = element_text(size = 12),  # Customize x-axis text size
+    axis.text.y = element_text(size = 12)  # Customize y-axis text size
+  ) +
+  stat_ellipse(data = ellipse_df, 
+               aes(x = iso1, y = iso2, color = group), 
+               level = 0.95,  # 95% ellipse
+               size = 1.2, 
+               alpha = 0.6) +  # Adjust transparency for the ellipses
+  scale_color_manual(name = "Taxa", values = group_colors)  # Apply color mapping to ellipses
+
+STB_Ellipse
+  
+
+ggsave("Analysis_Fall2024/Plots/STB_Ellipse.png", plot = STB_Ellipse, height = 6, width = 12, dpi = 300)
+
+```
+
+## SWN
+
+```{r}
+SWN <- CRD_data %>%
+  filter(community == "SWN")
+
+mydata <- SWN
+
+```
+
+Checking this.
+```{r}
+# create the siber object
+siber.example <- createSiberObject(mydata)
+
+# Calculate summary statistics for each group: TA, SEA and SEAc
+group.ML <- groupMetricsML(siber.example)
+
+# options for running jags
+parms <- list()
+parms$n.iter <- 2 * 10^4   # number of iterations to run the model for
+parms$n.burnin <- 1 * 10^3 # discard the first set of values
+parms$n.thin <- 10     # thin the posterior by this many
+parms$n.chains <- 2        # run this many chains
+
+# define the priors
+priors <- list()
+priors$R <- 1 * diag(2)
+priors$k <- 2
+priors$tau.mu <- 1.0E-3
+
+# fit the ellipses which uses an Inverse Wishart prior
+# on the covariance matrix Sigma, and a vague normal prior on the 
+# means. Fitting is via the JAGS method.
+ellipses.posterior <- siberMVN(siber.example, parms, priors)
+```
+
+The posterior estimates of the ellipses for each group can be used to calculate the SEA.B for each group.
+
+```{r siber-plots, echo=TRUE, warning=FALSE, message=FALSE}
+
+SEA.B <- siberEllipses(ellipses.posterior)
+
+siberDensityPlot(SEA.B, xticklabels = colnames(group.ML), 
+                xlab = c("Group"),
+                ylab = expression("Standard Ellipse Area " ('permille' ^2) ),
+                bty = "L",
+                las = 1,
+                main = "SIBER ellipses on each group"
+                )
+
+#trying to make this a violin plot
+library(ggplot2)
+library(dplyr)
+library(reshape2)
+
+# Combine the SEA.B data into a single data frame
+SEA.B.long <- as.data.frame(SEA.B)
+SEA.B.long$Iteration <- 1:nrow(SEA.B.long)
+
+# Convert to long format
+SEA.B.melted <- melt(SEA.B.long, id.vars = "Iteration", variable.name = "Group", value.name = "SEA")
+
+# Define custom group labels
+group_labels <- c("Bogbean", "Elodea", "Horsetail", "Mare's Tail", "Milfoil", "Peat Moss", "Pondweed", "Purple Marshlocks", "Sedge", "Yellow Pond Lily" )
+
+# Calculate the 2.5th and 97.5th percentiles for each group
+SEA.B.filtered <- SEA.B.melted %>%
+  group_by(Group) %>%
+  mutate(
+    lower_cutoff = quantile(SEA, 0.025, na.rm = TRUE),
+    upper_cutoff = quantile(SEA, 0.975, na.rm = TRUE)
+  ) %>%
+  filter(SEA >= lower_cutoff & SEA <= upper_cutoff) %>%
+  ungroup()
+
+# Calculate medians for each group
+median_values <- SEA.B.filtered %>%
+  group_by(Group) %>%
+  summarize(median_SEA = median(SEA, na.rm = TRUE), .groups = "drop")
+
+# Create the violin plot with custom group labels
+SWN_plot_all <- ggplot(SEA.B.filtered, aes(x = factor(Group, labels = group_labels), y = SEA, fill = Group)) +
+  geom_violin(trim = TRUE, color = "black") + # Add violin plot
+  geom_point(data = median_values, aes(x = factor(Group, labels = group_labels), y = median_SEA), 
+             shape = 4, size = 3, color = "black", stroke = 1.2) + # Add X for median
+  ylab(expression("Standard Ellipse Area " ('\u2030'^2))) + # Custom y-axis label
+  xlab("") +
+  theme_classic() +
+  theme(
+    legend.position = "none",              # Remove legend
+    axis.text = element_text(size = 14),   # Customize axis tick labels
+    axis.title = element_text(size = 20),  # Customize axis title size
+    axis.text.x = element_text(size = 12, angle = 45, hjust = 1), # Rotate x-axis labels by 45 degrees
+    axis.text.y = element_text(size = 12)  # Customize y-axis text size
+  )
+
+
+# Create the violin plot with custom group labels
+SWN_plot_zoom <- ggplot(SEA.B.filtered, aes(x = factor(Group, labels = group_labels), y = SEA, fill = Group)) +
+  geom_violin(trim = TRUE, color = "black") + # Add violin plot
+  geom_point(data = median_values, aes(x = factor(Group, labels = group_labels), y = median_SEA), 
+             shape = 4, size = 3, color = "black", stroke = 1.2) + # Add X for median
+  ylab(expression("Standard Ellipse Area " ('\u2030'^2))) + # Custom y-axis label
+  xlab("") +
+  ylim(0,20)+
+  theme_classic() +
+  theme(
+    legend.position = "none",              # Remove legend
+    axis.text = element_text(size = 14),   # Customize axis tick labels
+    axis.title = element_text(size = 20),  # Customize axis title size
+    axis.text.x = element_text(size = 12, angle = 45, hjust = 1), # Customize x-axis text size
+    axis.text.y = element_text(size = 12)  # Customize y-axis text size
+  )
+
+# Print the plot
+SWN_plot_all
+SWN_plot_zoom
+
+
+ggsave("Analysis_Fall2024/Plots/SWN_all_EllipseArea.png", plot = SWN_plot_all, height = 6, width = 12, dpi = 300)
+ggsave("Analysis_Fall2024/Plots/SWN_zoom_EllipseArea.png", plot = SWN_plot_zoom, height = 6, width = 12, dpi = 300)
+
+```
+
+Now we want to create some plots of some sample ellipses from these distributions. We need to create a data.frame object of all the ellipses for each group. In this example we simply take the first 10 posterior draws assuming them to be independent of one another, but you could take a random sample if you prefer.
+
+```{r}
+# how many of the posterior draws do you want?
+n.posts <- 10
+
+# decide how big an ellipse you want to draw
+p.ell <- 0.95
+
+# for a standard ellipse use
+# p.ell <- SWNisq(1,2)
+
+
+
+
+# a list to store the results
+all_ellipses <- list()
+
+# loop over groups
+for (i in 1:length(ellipses.posterior)){
+  
+  # a dummy variable to build in the loop
+  ell <- NULL
+  post.id <- NULL
+  
+  for ( j in 1:n.posts){
+    
+    # covariance matrix
+    Sigma  <- matrix(ellipses.posterior[[i]][j,1:4], 2, 2)
+    
+    # mean
+    mu     <- ellipses.posterior[[i]][j,5:6]
+    
+    # ellipse points
+    
+    out <- ellipse::ellipse(Sigma, centre = mu , level = p.ell)
+    
+    
+    ell <- rbind(ell, out)
+    post.id <- c(post.id, rep(j, nrow(out)))
+    
+  }
+  ell <- as.data.frame(ell)
+  ell$rep <- post.id
+  all_ellipses[[i]] <- ell
+}
+
+ellipse_df <- bind_rows(all_ellipses, .id = "id")
+
+
+# now we need the group and community names
+
+# extract them from the ellipses.posterior list
+group_comm_names <- names(ellipses.posterior)[as.numeric(ellipse_df$id)]
+
+# split them and conver to a matrix, NB byrow = T
+split_group_comm <- matrix(unlist(strsplit(group_comm_names, "[.]")),
+                           nrow(ellipse_df), 2, byrow = TRUE)
+
+ellipse_df$community <- split_group_comm[,1]
+ellipse_df$group     <- split_group_comm[,2]
+
+ellipse_df <- dplyr::rename(ellipse_df, iso1 = x, iso2 = y)
+```
+
+
+
+Now to create the plots. First plot all the raw data as we want.
+
+```{r}
+first.plot <- ggplot(data = mydata, aes(iso1, iso2)) +
+  geom_point(aes(color = factor(group)), size = 2) +
+  ylab(expression(paste(delta^{15}, "N (permille)"))) +
+  xlab(expression(paste(delta^{13}, "C (permille)"))) + 
+  theme(text = element_text(size = 15)) +
+  scale_color_manual(name = "Taxa", values = group_colors)  # Apply color mapping to points
+print(first.plot)
+
+```
+
+Trying to add the 95% confidence ellipses
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Calculate the mean of iso1 and iso2 per group (this part is correct)
+ellipse_summary <- ellipse_df %>%
+  group_by(group) %>%
+  summarise(
+    iso1 = mean(iso1),  # Mean of iso1 (x-coordinate)
+    iso2 = mean(iso2),  # Mean of iso2 (y-coordinate)
+    .groups = "drop"
+  )
+
+# Create the plot with points
+SWN_Ellipse<- ggplot(data = mydata, aes(iso1, iso2)) +
+  geom_point(aes(color = factor(group)), size = 2) +
+  ylab(expression(paste(delta^{15}, "N (\u2030)"))) +
+  xlab(expression(paste(delta^{13}, "C (\u2030)"))) + 
+  scale_color_manual(name = "Taxa", values = group_colors) +  # Apply color mapping to points
+  theme_classic() +
+  theme(
+    axis.text = element_text(size = 14),  # Customize axis tick labels
+    axis.title = element_text(size = 20),  # Customize axis title size
+    axis.text.x = element_text(size = 12),  # Customize x-axis text size
+    axis.text.y = element_text(size = 12)  # Customize y-axis text size
+  ) +
+  stat_ellipse(data = ellipse_df, 
+               aes(x = iso1, y = iso2, color = group), 
+               level = 0.95,  # 95% ellipse
+               size = 1.2, 
+               alpha = 0.6) +  # Adjust transparency for the ellipses
+  scale_color_manual(name = "Taxa", values = group_colors)  # Apply color mapping to ellipses
+
+SWN_Ellipse
+  
+
+ggsave("Analysis_Fall2024/Plots/SWN_Ellipse.png", plot = SWN_Ellipse, height = 6, width = 12, dpi = 300)
+
+```
+
+## WCW
+
+```{r}
+WCW <- CRD_data %>%
+  filter(community == "WCW")
+
+mydata <- WCW
+
+```
+
+Checking this.
+```{r}
+# create the siber object
+siber.example <- createSiberObject(mydata)
+
+# Calculate summary statistics for each group: TA, SEA and SEAc
+group.ML <- groupMetricsML(siber.example)
+
+# options for running jags
+parms <- list()
+parms$n.iter <- 2 * 10^4   # number of iterations to run the model for
+parms$n.burnin <- 1 * 10^3 # discard the first set of values
+parms$n.thin <- 10     # thin the posterior by this many
+parms$n.chains <- 2        # run this many chains
+
+# define the priors
+priors <- list()
+priors$R <- 1 * diag(2)
+priors$k <- 2
+priors$tau.mu <- 1.0E-3
+
+# fit the ellipses which uses an Inverse Wishart prior
+# on the covariance matrix Sigma, and a vague normal prior on the 
+# means. Fitting is via the JAGS method.
+ellipses.posterior <- siberMVN(siber.example, parms, priors)
+```
+
+The posterior estimates of the ellipses for each group can be used to calculate the SEA.B for each group.
+
+```{r siber-plots, echo=TRUE, warning=FALSE, message=FALSE}
+
+SEA.B <- siberEllipses(ellipses.posterior)
+
+siberDensityPlot(SEA.B, xticklabels = colnames(group.ML), 
+                xlab = c("Group"),
+                ylab = expression("Standard Ellipse Area " ('permille' ^2) ),
+                bty = "L",
+                las = 1,
+                main = "SIBER ellipses on each group"
+                )
+
+#trying to make this a violin plot
+library(ggplot2)
+library(dplyr)
+library(reshape2)
+
+# Combine the SEA.B data into a single data frame
+SEA.B.long <- as.data.frame(SEA.B)
+SEA.B.long$Iteration <- 1:nrow(SEA.B.long)
+
+# Convert to long format
+SEA.B.melted <- melt(SEA.B.long, id.vars = "Iteration", variable.name = "Group", value.name = "SEA")
+
+# Define custom group labels
+group_labels <- c("Algae", "Bogbean", "Burreed", "Milfoil", "Peat Moss", "Pondweed", "Purple Marshlocks", "Sedge", "Yellow Pond Lily", "Elodea")
+
+# Calculate the 2.5th and 97.5th percentiles for each group
+SEA.B.filtered <- SEA.B.melted %>%
+  group_by(Group) %>%
+  mutate(
+    lower_cutoff = quantile(SEA, 0.025, na.rm = TRUE),
+    upper_cutoff = quantile(SEA, 0.975, na.rm = TRUE)
+  ) %>%
+  filter(SEA >= lower_cutoff & SEA <= upper_cutoff) %>%
+  ungroup()
+
+# Calculate medians for each group
+median_values <- SEA.B.filtered %>%
+  group_by(Group) %>%
+  summarize(median_SEA = median(SEA, na.rm = TRUE), .groups = "drop")
+
+# Create the violin plot with custom group labels
+WCW_plot_all <- ggplot(SEA.B.filtered, aes(x = factor(Group, labels = group_labels), y = SEA, fill = Group)) +
+  geom_violin(trim = TRUE, color = "black") + # Add violin plot
+  geom_point(data = median_values, aes(x = factor(Group, labels = group_labels), y = median_SEA), 
+             shape = 4, size = 3, color = "black", stroke = 1.2) + # Add X for median
+  ylab(expression("Standard Ellipse Area " ('\u2030'^2))) + # Custom y-axis label
+  xlab("") +
+  theme_classic() +
+  theme(
+    legend.position = "none",              # Remove legend
+    axis.text = element_text(size = 14),   # Customize axis tick labels
+    axis.title = element_text(size = 20),  # Customize axis title size
+    axis.text.x = element_text(size = 12, angle = 45, hjust = 1), # Rotate x-axis labels by 45 degrees
+    axis.text.y = element_text(size = 12)  # Customize y-axis text size
+  )
+
+
+# Create the violin plot with custom group labels
+WCW_plot_zoom <- ggplot(SEA.B.filtered, aes(x = factor(Group, labels = group_labels), y = SEA, fill = Group)) +
+  geom_violin(trim = TRUE, color = "black") + # Add violin plot
+  geom_point(data = median_values, aes(x = factor(Group, labels = group_labels), y = median_SEA), 
+             shape = 4, size = 3, color = "black", stroke = 1.2) + # Add X for median
+  ylab(expression("Standard Ellipse Area " ('\u2030'^2))) + # Custom y-axis label
+  xlab("") +
+  ylim(0,10)+
+  theme_classic() +
+  theme(
+    legend.position = "none",              # Remove legend
+    axis.text = element_text(size = 14),   # Customize axis tick labels
+    axis.title = element_text(size = 20),  # Customize axis title size
+    axis.text.x = element_text(size = 12, angle = 45, hjust = 1), # Customize x-axis text size
+    axis.text.y = element_text(size = 12)  # Customize y-axis text size
+  )
+
+# Print the plot
+WCW_plot_all
+WCW_plot_zoom
+
+
+ggsave("Analysis_Fall2024/Plots/WCW_all_EllipseArea.png", plot = WCW_plot_all, height = 6, width = 12, dpi = 300)
+ggsave("Analysis_Fall2024/Plots/WCW_zoom_EllipseArea.png", plot = WCW_plot_zoom, height = 6, width = 12, dpi = 300)
+
+```
+
+Now we want to create some plots of some sample ellipses from these distributions. We need to create a data.frame object of all the ellipses for each group. In this example we simply take the first 10 posterior draws assuming them to be independent of one another, but you could take a random sample if you prefer.
+
+```{r}
+# how many of the posterior draws do you want?
+n.posts <- 10
+
+# decide how big an ellipse you want to draw
+p.ell <- 0.95
+
+# for a standard ellipse use
+# p.ell <- WCWisq(1,2)
+
+
+
+
+# a list to store the results
+all_ellipses <- list()
+
+# loop over groups
+for (i in 1:length(ellipses.posterior)){
+  
+  # a dummy variable to build in the loop
+  ell <- NULL
+  post.id <- NULL
+  
+  for ( j in 1:n.posts){
+    
+    # covariance matrix
+    Sigma  <- matrix(ellipses.posterior[[i]][j,1:4], 2, 2)
+    
+    # mean
+    mu     <- ellipses.posterior[[i]][j,5:6]
+    
+    # ellipse points
+    
+    out <- ellipse::ellipse(Sigma, centre = mu , level = p.ell)
+    
+    
+    ell <- rbind(ell, out)
+    post.id <- c(post.id, rep(j, nrow(out)))
+    
+  }
+  ell <- as.data.frame(ell)
+  ell$rep <- post.id
+  all_ellipses[[i]] <- ell
+}
+
+ellipse_df <- bind_rows(all_ellipses, .id = "id")
+
+
+# now we need the group and community names
+
+# extract them from the ellipses.posterior list
+group_comm_names <- names(ellipses.posterior)[as.numeric(ellipse_df$id)]
+
+# split them and conver to a matrix, NB byrow = T
+split_group_comm <- matrix(unlist(strsplit(group_comm_names, "[.]")),
+                           nrow(ellipse_df), 2, byrow = TRUE)
+
+ellipse_df$community <- split_group_comm[,1]
+ellipse_df$group     <- split_group_comm[,2]
+
+ellipse_df <- dplyr::rename(ellipse_df, iso1 = x, iso2 = y)
+```
+
+
+
+Now to create the plots. First plot all the raw data as we want.
+
+```{r}
+first.plot <- ggplot(data = mydata, aes(iso1, iso2)) +
+  geom_point(aes(color = factor(group)), size = 2) +
+  ylab(expression(paste(delta^{15}, "N (permille)"))) +
+  xlab(expression(paste(delta^{13}, "C (permille)"))) + 
+  theme(text = element_text(size = 15)) +
+  scale_color_manual(name = "Taxa", values = group_colors)  # Apply color mapping to points
+print(first.plot)
+
+```
+
+Trying to add the 95% confidence ellipses
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Calculate the mean of iso1 and iso2 per group (this part is correct)
+ellipse_summary <- ellipse_df %>%
+  group_by(group) %>%
+  summarise(
+    iso1 = mean(iso1),  # Mean of iso1 (x-coordinate)
+    iso2 = mean(iso2),  # Mean of iso2 (y-coordinate)
+    .groups = "drop"
+  )
+
+# Create the plot with points
+WCW_Ellipse<- ggplot(data = mydata, aes(iso1, iso2)) +
+  geom_point(aes(color = factor(group)), size = 2) +
+  ylab(expression(paste(delta^{15}, "N (\u2030)"))) +
+  xlab(expression(paste(delta^{13}, "C (\u2030)"))) + 
+  scale_color_manual(name = "Taxa", values = scales::hue_pal()(length(unique(mydata$group)))) + # Add legend title "taxa"
+  theme_classic() +
+  theme(axis.text = element_text(size = 14),   # Customize axis tick labels
+    axis.title = element_text(size = 20),  # Customize axis title size
+    axis.text.x = element_text(size = 12), # Customize x-axis text size
+    axis.text.y = element_text(size = 12)  # Customize y-axis text size
+  ) +
+  stat_ellipse(data = ellipse_df, 
+               aes(x = iso1, y = iso2, color = group), 
+               level = 0.95,  # 95% ellipse
+               size = 1.2, 
+               alpha = 0.6) +  # Adjust transparency for the ellipses
+  scale_color_manual(name = "Taxa", values = scales::hue_pal()(length(unique(ellipse_df$group))))  # Correct color mapping
+WCW_Ellipse
+  
+
+ggsave("Analysis_Fall2024/Plots/WCW_Ellipse.png", plot = WCW_Ellipse, height = 6, width = 12, dpi = 300)
+
+```
+
+## WGN
+
+```{r}
+WGN <- CRD_data %>%
+  filter(community == "WGN")
+
+mydata <- WGN
+
+```
+
+Checking this.
+```{r}
+# create the siber object
+siber.example <- createSiberObject(mydata)
+
+# Calculate summary statistics for each group: TA, SEA and SEAc
+group.ML <- groupMetricsML(siber.example)
+
+# options for running jags
+parms <- list()
+parms$n.iter <- 2 * 10^4   # number of iterations to run the model for
+parms$n.burnin <- 1 * 10^3 # discard the first set of values
+parms$n.thin <- 10     # thin the posterior by this many
+parms$n.chains <- 2        # run this many chains
+
+# define the priors
+priors <- list()
+priors$R <- 1 * diag(2)
+priors$k <- 2
+priors$tau.mu <- 1.0E-3
+
+# fit the ellipses which uses an Inverse Wishart prior
+# on the covariance matrix Sigma, and a vague normal prior on the 
+# means. Fitting is via the JAGS method.
+ellipses.posterior <- siberMVN(siber.example, parms, priors)
+```
+
+The posterior estimates of the ellipses for each group can be used to calculate the SEA.B for each group.
+
+```{r siber-plots, echo=TRUE, warning=FALSE, message=FALSE}
+
+SEA.B <- siberEllipses(ellipses.posterior)
+
+siberDensityPlot(SEA.B, xticklabels = colnames(group.ML), 
+                xlab = c("Group"),
+                ylab = expression("Standard Ellipse Area " ('permille' ^2) ),
+                bty = "L",
+                las = 1,
+                main = "SIBER ellipses on each group"
+                )
+
+#trying to make this a violin plot
+library(ggplot2)
+library(dplyr)
+library(reshape2)
+
+# Combine the SEA.B data into a single data frame
+SEA.B.long <- as.data.frame(SEA.B)
+SEA.B.long$Iteration <- 1:nrow(SEA.B.long)
+
+# Convert to long format
+SEA.B.melted <- melt(SEA.B.long, id.vars = "Iteration", variable.name = "Group", value.name = "SEA")
+
+# Define custom group labels
+group_labels <- c("Algae", "Burreed", "Cotton Grass", "Elodea", "Mare's Tail", "Pondweed", "Purple Marshlocks", "Reed Grass", "Sedge", "Yellow Pond Lily")
+
+# Calculate the 2.5th and 97.5th percentiles for each group
+SEA.B.filtered <- SEA.B.melted %>%
+  group_by(Group) %>%
+  mutate(
+    lower_cutoff = quantile(SEA, 0.025, na.rm = TRUE),
+    upper_cutoff = quantile(SEA, 0.975, na.rm = TRUE)
+  ) %>%
+  filter(SEA >= lower_cutoff & SEA <= upper_cutoff) %>%
+  ungroup()
+
+# Calculate medians for each group
+median_values <- SEA.B.filtered %>%
+  group_by(Group) %>%
+  summarize(median_SEA = median(SEA, na.rm = TRUE), .groups = "drop")
+
+# Create the violin plot with custom group labels
+WGN_plot_all <- ggplot(SEA.B.filtered, aes(x = factor(Group, labels = group_labels), y = SEA, fill = Group)) +
+  geom_violin(trim = TRUE, color = "black") + # Add violin plot
+  geom_point(data = median_values, aes(x = factor(Group, labels = group_labels), y = median_SEA), 
+             shape = 4, size = 3, color = "black", stroke = 1.2) + # Add X for median
+  ylab(expression("Standard Ellipse Area " ('\u2030'^2))) + # Custom y-axis label
+  xlab("") +
+  theme_classic() +
+  theme(
+    legend.position = "none",              # Remove legend
+    axis.text = element_text(size = 14),   # Customize axis tick labels
+    axis.title = element_text(size = 20),  # Customize axis title size
+    axis.text.x = element_text(size = 12, angle = 45, hjust = 1), # Rotate x-axis labels by 45 degrees
+    axis.text.y = element_text(size = 12)  # Customize y-axis text size
+  )
+
+
+# Create the violin plot with custom group labels
+WGN_plot_zoom <- ggplot(SEA.B.filtered, aes(x = factor(Group, labels = group_labels), y = SEA, fill = Group)) +
+  geom_violin(trim = TRUE, color = "black") + # Add violin plot
+  geom_point(data = median_values, aes(x = factor(Group, labels = group_labels), y = median_SEA), 
+             shape = 4, size = 3, color = "black", stroke = 1.2) + # Add X for median
+  ylab(expression("Standard Ellipse Area " ('\u2030'^2))) + # Custom y-axis label
+  xlab("") +
+  ylim(0,10)+
+  theme_classic() +
+  theme(
+    legend.position = "none",              # Remove legend
+    axis.text = element_text(size = 14),   # Customize axis tick labels
+    axis.title = element_text(size = 20),  # Customize axis title size
+    axis.text.x = element_text(size = 12, angle = 45, hjust = 1), # Customize x-axis text size
+    axis.text.y = element_text(size = 12)  # Customize y-axis text size
+  )
+
+# Print the plot
+WGN_plot_all
+WGN_plot_zoom
+
+
+ggsave("Analysis_Fall2024/Plots/WGN_all_EllipseArea.png", plot = WGN_plot_all, height = 6, width = 12, dpi = 300)
+ggsave("Analysis_Fall2024/Plots/WGN_zoom_EllipseArea.png", plot = WGN_plot_zoom, height = 6, width = 12, dpi = 300)
+
+```
+
+Now we want to create some plots of some sample ellipses from these distributions. We need to create a data.frame object of all the ellipses for each group. In this example we simply take the first 10 posterior draws assuming them to be independent of one another, but you could take a random sample if you prefer.
+
+```{r}
+# how many of the posterior draws do you want?
+n.posts <- 10
+
+# decide how big an ellipse you want to draw
+p.ell <- 0.95
+
+# for a standard ellipse use
+# p.ell <- WGNisq(1,2)
+
+
+
+
+# a list to store the results
+all_ellipses <- list()
+
+# loop over groups
+for (i in 1:length(ellipses.posterior)){
+  
+  # a dummy variable to build in the loop
+  ell <- NULL
+  post.id <- NULL
+  
+  for ( j in 1:n.posts){
+    
+    # covariance matrix
+    Sigma  <- matrix(ellipses.posterior[[i]][j,1:4], 2, 2)
+    
+    # mean
+    mu     <- ellipses.posterior[[i]][j,5:6]
+    
+    # ellipse points
+    
+    out <- ellipse::ellipse(Sigma, centre = mu , level = p.ell)
+    
+    
+    ell <- rbind(ell, out)
+    post.id <- c(post.id, rep(j, nrow(out)))
+    
+  }
+  ell <- as.data.frame(ell)
+  ell$rep <- post.id
+  all_ellipses[[i]] <- ell
+}
+
+ellipse_df <- bind_rows(all_ellipses, .id = "id")
+
+
+# now we need the group and community names
+
+# extract them from the ellipses.posterior list
+group_comm_names <- names(ellipses.posterior)[as.numeric(ellipse_df$id)]
+
+# split them and conver to a matrix, NB byrow = T
+split_group_comm <- matrix(unlist(strsplit(group_comm_names, "[.]")),
+                           nrow(ellipse_df), 2, byrow = TRUE)
+
+ellipse_df$community <- split_group_comm[,1]
+ellipse_df$group     <- split_group_comm[,2]
+
+ellipse_df <- dplyr::rename(ellipse_df, iso1 = x, iso2 = y)
+```
+
+
+
+Now to create the plots. First plot all the raw data as we want.
+
+```{r}
+first.plot <- ggplot(data = mydata, aes(iso1, iso2)) +
+  geom_point(aes(color = factor(group)), size = 2) +
+  ylab(expression(paste(delta^{15}, "N (permille)"))) +
+  xlab(expression(paste(delta^{13}, "C (permille)"))) + 
+  theme(text = element_text(size = 15)) +
+  scale_color_manual(name = "Taxa", values = group_colors)  # Apply color mapping to points
+print(first.plot)
+
+```
+
+Trying to add the 95% confidence ellipses
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Calculate the mean of iso1 and iso2 per group (this part is correct)
+ellipse_summary <- ellipse_df %>%
+  group_by(group) %>%
+  summarise(
+    iso1 = mean(iso1),  # Mean of iso1 (x-coordinate)
+    iso2 = mean(iso2),  # Mean of iso2 (y-coordinate)
+    .groups = "drop"
+  )
+
+# Create the plot with points
+WGN_Ellipse<- ggplot(data = mydata, aes(iso1, iso2)) +
+  geom_point(aes(color = factor(group)), size = 2) +
+  ylab(expression(paste(delta^{15}, "N (\u2030)"))) +
+  xlab(expression(paste(delta^{13}, "C (\u2030)"))) + 
+  scale_color_manual(name = "Taxa", values = group_colors) +  # Apply color mapping to points
+  theme_classic() +
+  theme(
+    axis.text = element_text(size = 14),  # Customize axis tick labels
+    axis.title = element_text(size = 20),  # Customize axis title size
+    axis.text.x = element_text(size = 12),  # Customize x-axis text size
+    axis.text.y = element_text(size = 12)  # Customize y-axis text size
+  ) +
+  stat_ellipse(data = ellipse_df, 
+               aes(x = iso1, y = iso2, color = group), 
+               level = 0.95,  # 95% ellipse
+               size = 1.2, 
+               alpha = 0.6) +  # Adjust transparency for the ellipses
+  scale_color_manual(name = "Taxa", values = group_colors)  # Apply color mapping to ellipses
+
+WGN_Ellipse
+  
+
+ggsave("Analysis_Fall2024/Plots/WGN_Ellipse.png", plot = WGN_Ellipse, height = 6, width = 12, dpi = 300)
+
+```
+
+# Combined Panel plot of Ellipses
+
+```{r}
+# Ensure that the 'status' variable has the correct order (Native first, Elodea second)
+library(dplyr)
+
+# load in the included demonstration dataset
+CRD_data <- read.csv("Analysis_Fall2024/DataFiles/CRD_MacrophyteData_SIBER_Ellipses5.csv", header=TRUE)
+
+CRD_data <- CRD_data %>%
+  mutate(status = ifelse(community %in% c("SWN", "WCW", "WGN"), "Elodea", "Native"))
+
+CRD_data$status <- factor(CRD_data$status, levels = c("Native", "Elodea"))
+
+# Filter out group-community combinations with fewer than 2 observations
+CRD_data <- CRD_data %>%
+  group_by(group, community) %>%
+  filter(n() >= 2) %>%
+  ungroup()  # Ungroup after filtering
+
+# Verify the changes
+table(CRD_data$group, CRD_data$community)
+
+
+# Now create the plot for all communities
+community_plot <- ggplot(data = CRD_data, aes(iso1, iso2)) +
+  geom_point(aes(color = factor(group)), size = 1) +
+  ylab(expression(paste(delta^{15}, "N (\u2030)"))) +
+  xlab(expression(paste(delta^{13}, "C (\u2030)"))) + 
+  scale_color_manual(name = "Taxa", values = group_colors) +  # Apply color mapping to points
+  #ylim(-15,15) + 
+  #xlim(-50,0) +
+  theme_classic() +
+  theme(
+    axis.text = element_text(size = 14),  # Customize axis tick labels
+    axis.title = element_text(size = 20),  # Customize axis title size
+    axis.text.x = element_text(size = 12),  # Customize x-axis text size
+    axis.text.y = element_text(size = 12),  # Customize y-axis text size
+    legend.position = "right",  # Position the legend at the bottom
+    strip.text = element_text(size = 14)  # Customize facet label size
+  ) +
+  stat_ellipse(data = CRD_data, 
+               aes(x = iso1, y = iso2, color = group), 
+               level = 0.95,  # 95% ellipse
+               size = 0.5, 
+               alpha = 0.6) +  # Adjust transparency for the ellipses
+  scale_color_manual(name = "Taxa", values = group_colors) +  # Apply color mapping to ellipses
+  facet_wrap(~ community, ncol = 2)  # Use fixed scales to keep all panels same size
+
+# Print the plot
+print(community_plot)
+
+# Optionally, save the plot
+ggsave("Analysis_Fall2024/Plots/Community_Plot_Fixed_Scales.png", plot = community_plot, height = 8, width = 12, dpi = 300)
+
+
+```
+
+Styled biplot
+
+```{r}
+# Load the packages
+library(ggplot2)
+library(dplyr)
+library(grid)
+library(gridExtra) # Optional
+
+# Load your data
+CRD_data <- read.csv("Analysis_Fall2024/DataFiles/CRD_MacrophyteData_SIBER_Ellipses5.csv", header = TRUE)
+
+# Add the 'status' column
+CRD_data <- CRD_data %>%
+  mutate(status = ifelse(community %in% c("SWN", "WCW", "WGN"), "Elodea", "Native"))
+
+# Ensure 'status' has the correct order
+CRD_data$status <- factor(CRD_data$status, levels = c("Native", "Elodea"))
+
+CRD_data <- CRD_data %>%
+  mutate(pair = case_when(
+    community %in% c("WGN", "STB") ~ "Road",
+    community %in% c("SWN", "PCH") ~ "Alaganik",
+    community %in% c("EYS", "WCW") ~ "Eyak",
+    TRUE ~ NA_character_  # Assign NA to other communities if needed
+  ))
+
+# Filter out group-community combinations with fewer than 2 observations
+CRD_data <- CRD_data %>%
+  group_by(group, community) %>%
+  filter(n() >= 2) %>%
+  ungroup()
+
+# Define specific colors for each group
+group_colors <- c(
+  "Bogbean" = "#1f78b4",       # Blue
+  "Horsetail" = "#33a02c",     # Green
+  "Milfoil" = "#e31a1c",      # Red
+  "Peat Moss" = "#ff7f00",     # Orange
+  "Sedge" = "#6a3d9a",         # Purple
+  "Yellow Pond Lily" = "#b15928", # Brown
+  "Bladderwort" = "#a6cee3",   # Light Blue
+  "Cotton Grass" = "#b2df8a",  # Light Green
+  "Purple Marshlocks" = "#fb9a99", # Pink
+  "Mare's Tail" = "#fdbf6f",   # Light Orange
+  "Pondweed" = "#cab2d6",      # Lavender
+  "Elodea" = "#8dd3c7",        # Teal
+  "Algae" = "#ffffb3",         # Light Yellow (replaced with teal-like color)
+  "Burreed" = "#bc80bd",       # Violet
+  "Reed Grass" = "#b3b3cc"     # Soft Gray
+)
+
+# Define specific shapes (adjust based on community size)
+shapes <- c(0, 15, 16, 1, 2, 3, 17, 18, 4, 15, 16, 5, 17, 6, 18, 7, 8, 15, 9, 10, 11, 12, 13, 16, 17, 14, 0)
+
+# Create the plot
+community_plot <- ggplot(data = CRD_data, aes(iso1, iso2)) +
+  geom_point(aes(color = group, shape = group), size = 1.5) +
+  ylab(expression(paste(delta^{15}, "N (\u2030)"))) +
+  xlab(expression(paste(delta^{13}, "C (\u2030)"))) + 
+  guides(shape = guide_legend(title = "Taxa"), color = guide_legend(title = "Taxa")) +
+  scale_shape_manual(values = shapes) +
+  facet_grid(rows = vars(status), cols = vars(pair)) +
+  theme_classic() +
+  theme(
+    axis.text = element_text(size = 14),  # Customize axis tick labels
+    axis.title = element_text(size = 20),  # Customize axis title size
+    axis.text.x = element_text(size = 12),  # Customize x-axis text size
+    axis.text.y = element_text(size = 12),  # Customize y-axis text size
+    legend.position = "right",  # Position the legend at the right
+    strip.text = element_text(size = 14)  # Customize facet label size
+  ) +
+  stat_ellipse(data = CRD_data, 
+               aes(x = iso1, y = iso2, color = group), 
+               level = 0.95,  # 95% ellipse
+               size = 0.5, 
+               alpha = 0.6)   # Adjust transparency for the ellipses
+
+# Add black and white theme
+bw.first.plot <- community_plot + theme_bw() + 
+  theme(text = element_text(size = 18))
+
+# Add lake labels
+dat_text <- data.frame(
+  label = c("SWN", "PCH", "WCW", "EYS", "WGN", "STB"),
+  pair = c("Alaganik", "Alaganik", "Eyak", "Eyak", "Road", "Road"),
+  status = c("Elodea", "Native", "Elodea", "Native", "Elodea", "Native")
+)
+
+# Add the lake labels to the plot
+plot <- bw.first.plot + geom_text(
+  data    = dat_text,
+  mapping = aes(x = -Inf, y = -Inf, label = label),
+  hjust   = -0.1,
+  vjust   = -1
+)
+
+# Customize strip colors for the facet labels (Elodea and Native)
+g <- ggplot_gtable(ggplot_build(plot))
+strip_right <- which(grepl('strip-r', g$layout$name))
+fills <- c("#F8766D","#619CFF")  # Red for Elodea, Blue for Native
+k <- 1
+for (i in strip_right) {
+  j <- which(grepl('rect', g$grobs[[i]]$grobs[[1]]$childrenOrder))
+  g$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- fills[k]
+  k <- k+1
+}
+grid.draw(g)
+
+# Save the final plot
+ggsave("Analysis_Fall2024/Plots/Community_Plot_Fixed_Scales.tiff", plot = g, height = 6, width = 12, dpi = 300)
+
+```
+
+
+# Comparisons of Ellipse Sizes Based on Elodea Presence/Absence
+
+Add a status column here
+```{r}
+CRD_data
+
+CRD_data <- CRD_data %>%
+  mutate(status = case_when(
+    community %in% c("EYS", "PCH", "STB") ~ "Native",
+    community %in% c("SWN", "WCW", "WGN") ~ "Elodea",
+    TRUE ~ NA_character_  # Handle any other cases
+  ))
+CRD_data
+```
+
+Comparing the isotopic signatures of macrophytes based on Elodea Presence/Absence
+
+## Bogbean
+```{r}
+Bogbean <- CRD_data %>%
+  filter(group == "Bogbean")
+
+ttest_carbon <- t.test(iso1 ~ status, data = Bogbean, na.action = na.omit)
+print(ttest_carbon)
+
+ttest_nitrogen <- t.test(iso2 ~ status, data = Bogbean, na.action = na.omit)
+print(ttest_nitrogen)
+```
+## Horsetail
+```{r}
+Horsetail <- CRD_data %>%
+  filter(group == "Horsetail")
+
+ttest_carbon <- t.test(iso1 ~ status, data = Horsetail, na.action = na.omit)
+print(ttest_carbon)
+
+ttest_nitrogen <- t.test(iso2 ~ status, data = Horsetail, na.action = na.omit)
+print(ttest_nitrogen)
+```
+
+## Milfoil
+```{r}
+Milfoil <- CRD_data %>%
+  filter(group == "Milfoil")
+
+ttest_carbon <- t.test(iso1 ~ status, data = Milfoil, na.action = na.omit)
+print(ttest_carbon)
+
+ttest_nitrogen <- t.test(iso2 ~ status, data = Milfoil, na.action = na.omit)
+print(ttest_nitrogen)
+```
+
+## Peat Moss
+```{r}
+PeatMoss <- CRD_data %>%
+  filter(group == "Peat Moss")
+
+ttest_carbon <- t.test(iso1 ~ status, data = PeatMoss, na.action = na.omit)
+print(ttest_carbon)
+
+ttest_nitrogen <- t.test(iso2 ~ status, data = PeatMoss, na.action = na.omit)
+print(ttest_nitrogen)
+```
+
+## Sedge
+```{r}
+Sedge <- CRD_data %>%
+  filter(group == "Sedge")
+
+ttest_carbon <- t.test(iso1 ~ status, data = Sedge, na.action = na.omit)
+print(ttest_carbon)
+
+ttest_nitrogen <- t.test(iso2 ~ status, data = Sedge, na.action = na.omit)
+print(ttest_nitrogen)
+```
+
+## Yellow Pond Lily
+```{r}
+YellowPondlily <- CRD_data %>%
+  filter(group == "Yellow Pond Lily")
+
+ttest_carbon <- t.test(iso1 ~ status, data = YellowPondlily, na.action = na.omit)
+print(ttest_carbon)
+
+ttest_nitrogen <- t.test(iso2 ~ status, data = YellowPondlily, na.action = na.omit)
+print(ttest_nitrogen)
+```
+
+## Bladderwort
+```{r}
+Bladderwort <- CRD_data %>%
+  filter(group == "Bladderwort")
+
+ttest_carbon <- t.test(iso1 ~ status, data = Bladderwort, na.action = na.omit)
+print(ttest_carbon)
+
+ttest_nitrogen <- t.test(iso2 ~ status, data = Bladderwort, na.action = na.omit)
+print(ttest_nitrogen)
+```
+
+## Cotton Grass
+```{r}
+CottonGrass <- CRD_data %>%
+  filter(group == "Cotton Grass")
+
+ttest_carbon <- t.test(iso1 ~ status, data = CottonGrass, na.action = na.omit)
+print(ttest_carbon)
+
+ttest_nitrogen <- t.test(iso2 ~ status, data = CottonGrass, na.action = na.omit)
+print(ttest_nitrogen)
+```
+
+## Purple Marshlocks
+```{r}
+PurpleMarshlocks <- CRD_data %>%
+  filter(group == "Purple Marshlocks")
+
+ttest_carbon <- t.test(iso1 ~ status, data = PurpleMarshlocks, na.action = na.omit)
+print(ttest_carbon)
+
+ttest_nitrogen <- t.test(iso2 ~ status, data = PurpleMarshlocks, na.action = na.omit)
+print(ttest_nitrogen)
+```
+
+## Mare's Tail
+```{r}
+MaresTail <- CRD_data %>%
+  filter(group == "Mare's Tail")
+
+ttest_carbon <- t.test(iso1 ~ status, data = MaresTail, na.action = na.omit)
+print(ttest_carbon)
+
+ttest_nitrogen <- t.test(iso2 ~ status, data = MaresTail, na.action = na.omit)
+print(ttest_nitrogen)
+```
+
+## Pondweed
+```{r}
+Pondweed <- CRD_data %>%
+  filter(group == "Pondweed")
+
+ttest_carbon <- t.test(iso1 ~ status, data = Pondweed, na.action = na.omit)
+print(ttest_carbon)
+
+ttest_nitrogen <- t.test(iso2 ~ status, data = Pondweed, na.action = na.omit)
+print(ttest_nitrogen)
+```
+
+## Algae
+```{r}
+Algae <- CRD_data %>%
+  filter(group == "Algae")
+
+ttest_carbon <- t.test(iso1 ~ status, data = Algae, na.action = na.omit)
+print(ttest_carbon)
+
+ttest_nitrogen <- t.test(iso2 ~ status, data = Algae, na.action = na.omit)
+print(ttest_nitrogen)
+```
+
+## Burreed
+```{r}
+Burreed <- CRD_data %>%
+  filter(group == "Burreed")
+
+ttest_carbon <- t.test(iso1 ~ status, data = Burreed, na.action = na.omit)
+print(ttest_carbon)
+
+ttest_nitrogen <- t.test(iso2 ~ status, data = Burreed, na.action = na.omit)
+print(ttest_nitrogen)
+```
+
+## Reed Grass
+```{r}
+ReedGrass <- CRD_data %>%
+  filter(group == "Reed Grass")
+
+ttest_carbon <- t.test(iso1 ~ status, data = ReedGrass, na.action = na.omit)
+print(ttest_carbon)
+
+ttest_nitrogen <- t.test(iso2 ~ status, data = ReedGrass, na.action = na.omit)
+print(ttest_nitrogen)
+```
+
